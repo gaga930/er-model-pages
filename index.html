@@ -124,6 +124,10 @@ header {
   padding: 7px 12px; font: inherit; font-size: .8rem; cursor: pointer; box-shadow: var(--shadow);
 }
 .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+.toolbar button#btnFlowLayout {
+  background: #e8f4f4; border-color: #9cc8c9; color: var(--accent); font-weight: 600;
+}
+.toolbar button#btnFlowLayout:hover { background: #d5eeee; }
 .toolbar label { display: flex; align-items: center; gap: 6px; }
 .legend {
   position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,.92);
@@ -217,6 +221,7 @@ header {
   <main class="canvas-wrap">
     <div class="toolbar">
       <button type="button" id="btnFit">適合畫面</button>
+      <button type="button" id="btnFlowLayout" title="依目前可見實體的關聯，由左至右排資料流">依資料流布局</button>
       <button type="button" id="btnReset">重置佈局</button>
       <button type="button" id="btnZoomIn">＋</button>
       <button type="button" id="btnZoomOut">－</button>
@@ -412,6 +417,103 @@ function layoutEntities(ents) {
     }
     col++;
   }
+}
+
+/** Longest-path rank along from→to edges (data flow left→right). */
+function computeFlowRanks(ents, rels) {
+  const ids = new Set(ents.map(e => e.id));
+  const rank = {};
+  for (const id of ids) rank[id] = 0;
+  const edges = rels.filter(r => ids.has(r.from) && ids.has(r.to) && r.from !== r.to);
+  const maxRank = Math.max(1, ids.size);
+  let changed = true;
+  let guard = maxRank + 2;
+  while (changed && guard-- > 0) {
+    changed = false;
+    for (const r of edges) {
+      const next = rank[r.from] + 1;
+      if (next <= maxRank && next > rank[r.to]) {
+        rank[r.to] = next;
+        changed = true;
+      }
+    }
+  }
+  return rank;
+}
+
+/** Layout currently visible entities left→right by data-flow rank. */
+function layoutByDataFlow() {
+  const ents = visibleEntities();
+  if (!ents.length) return;
+  const rels = visibleRels(ents);
+  const rank = computeFlowRanks(ents, rels);
+
+  // barycentric sort within column to reduce crossings
+  const preds = {};
+  const succs = {};
+  for (const e of ents) { preds[e.id] = []; succs[e.id] = []; }
+  for (const r of rels) {
+    if (!(r.from in rank) || !(r.to in rank) || r.from === r.to) continue;
+    preds[r.to].push(r.from);
+    succs[r.from].push(r.to);
+  }
+  const avg = (arr, fallback) => arr.length ? arr.reduce((s, id) => s + (rank[id] ?? fallback), 0) / arr.length : fallback;
+
+  const columns = {};
+  for (const e of ents) {
+    const k = rank[e.id] ?? 0;
+    (columns[k] ||= []).push(e);
+  }
+  const ranks = Object.keys(columns).map(Number).sort((a, b) => a - b);
+  for (const k of ranks) {
+    columns[k].sort((a, b) => {
+      const ba = avg(preds[a.id], k) + avg(succs[a.id], k);
+      const bb = avg(preds[b.id], k) + avg(succs[b.id], k);
+      return ba - bb || a.name.localeCompare(b.name);
+    });
+  }
+
+  const colW = 300;
+  const gapY = 28;
+  const startX = 40;
+  const startY = 30;
+
+  // first pass: place; second pass refine Y by neighbor midpoints
+  for (let pass = 0; pass < 2; pass++) {
+    for (const k of ranks) {
+      const list = columns[k];
+      let y = startY;
+      const x = startX + k * colW;
+      // optional barycentric Y for pass 1
+      if (pass === 1) {
+        const scored = list.map(e => {
+          const nbrs = [...preds[e.id], ...succs[e.id]]
+            .map(id => state.positions[id])
+            .filter(Boolean);
+          const ideal = nbrs.length
+            ? nbrs.reduce((s, p) => s + p.y, 0) / nbrs.length
+            : (state.positions[e.id]?.y ?? startY);
+          return { e, ideal };
+        });
+        scored.sort((a, b) => a.ideal - b.ideal || a.e.name.localeCompare(b.e.name));
+        y = startY;
+        for (const { e } of scored) {
+          const { h } = measureBox(e);
+          state.positions[e.id] = { x, y, _auto: false };
+          y += h + gapY;
+        }
+      } else {
+        for (const e of list) {
+          const { h } = measureBox(e);
+          state.positions[e.id] = { x, y, _auto: false };
+          y += h + gapY;
+        }
+      }
+    }
+  }
+
+  render();
+  setTimeout(fitView, 40);
 }
 
 function render() {
@@ -653,7 +755,7 @@ function rebuildSidebar() {
     const c = layerColor(l);
     const meta = LAYER_META[l] || { label: l };
     return `<span><i class="lg-box" style="border-color:${c.stroke};background:${c.head}"></i>${meta.label}</span>`;
-  }).join("") + `<span>→ 箭頭＝資料流向 · 搜尋可帶出關聯表 · 拖曳平移</span>`;
+  }).join("") + `<span>→ 箭頭＝資料流向 ·「依資料流布局」由左至右 · 拖曳平移</span>`;
 }
 
 function clearAutoPos() {
@@ -707,6 +809,7 @@ document.getElementById("search").addEventListener("input", e => {
   setTimeout(fitView, 40);
 });
 document.getElementById("btnFit").addEventListener("click", fitView);
+document.getElementById("btnFlowLayout").addEventListener("click", layoutByDataFlow);
 document.getElementById("btnReset").addEventListener("click", () => {
   state.selected = null;
   state.search = "";
