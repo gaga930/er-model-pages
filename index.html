@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UDP 資料倉儲 ER Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg0: #f0f4f8;
+  --bg1: #e2eaf2;
+  --panel: #ffffff;
+  --ink: #0f1c2e;
+  --muted: #5a6b7d;
+  --line: #c5d0dc;
+  --accent: #0d7377;
+  --accent-dim: #14919b;
+  --dim: #2563eb;
+  --dwd: #c2410c;
+  --dws: #7c3aed;
+  --shadow: 0 8px 30px rgba(15, 28, 46, 0.08);
+  --radius: 12px;
+  --font: "IBM Plex Sans TC", "Noto Sans TC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #c8e6e8 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, #d4e0f0 0%, transparent 45%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  overflow: hidden;
+}
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr 340px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  gap: 0;
+}
+header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.brand h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.brand h1 span { color: var(--accent); }
+.brand .sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.stats {
+  display: flex;
+  gap: 18px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.stats b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.sidebar, .detail {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 16px;
+}
+.detail { border-right: none; border-left: 1px solid var(--line); }
+.section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 14px 0 8px;
+}
+.section-title:first-child { margin-top: 0; }
+.search {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  outline: none;
+}
+.search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(13,115,119,0.15); }
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.flow-chip {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #e8f4f4;
+  color: var(--accent);
+  font-weight: 500;
+}
+.flow-arrow { color: var(--muted); font-size: 0.7rem; }
+.domain-list, .layer-list { display: flex; flex-direction: column; gap: 4px; }
+.chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  user-select: none;
+}
+.chk:hover { background: var(--bg0); }
+.chk input { accent-color: var(--accent); }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.entity-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.entity-mini button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--ink);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.entity-mini button:hover,
+.entity-mini button.active { background: #e8f4f4; color: var(--accent); }
+.entity-mini .ename { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+.canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(15,28,46,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,28,46,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+#stage {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+#stage.dragging { cursor: grabbing; }
+.toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 5;
+}
+.toolbar button, .toolbar label {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+.toolbar label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  display: flex;
+  gap: 14px;
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+.legend span { display: flex; align-items: center; gap: 6px; }
+.lg-box {
+  width: 14px; height: 10px; border-radius: 2px; border: 2px solid;
+}
+.detail-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 24px 8px;
+  text-align: center;
+  line-height: 1.6;
+}
+.detail h2 {
+  font-size: 1.15rem;
+  margin-bottom: 4px;
+}
+.detail .tid {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.badge {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg0);
+  color: var(--muted);
+  font-weight: 500;
+}
+.badge.layer-dim { background: #dbeafe; color: #1d4ed8; }
+.badge.layer-dwd { background: #ffedd5; color: #c2410c; }
+.badge.layer-dws { background: #ede9fe; color: #6d28d9; }
+.meta-row {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.meta-row code {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: var(--bg0);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.col-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+.col-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: #fff;
+}
+.col-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid #eef2f6;
+  vertical-align: top;
+}
+.col-table .cname {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.col-table .pk { color: #b45309; font-weight: 600; }
+.rel-list { list-style: none; margin-top: 8px; }
+.rel-list li {
+  font-size: 0.8rem;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef2f6;
+  color: var(--muted);
+}
+.rel-list code { font-family: var(--mono); font-size: 0.75rem; color: var(--ink); }
+.rel-list a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+}
+.rel-list a:hover { text-decoration: underline; }
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 240px 1fr; }
+  .detail { display: none; }
+  .detail.open-mobile {
+    display: block;
+    position: absolute;
+    right: 0; top: 56px; bottom: 0;
+    width: min(340px, 90vw);
+    z-index: 20;
+    box-shadow: var(--shadow);
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>UDP <span>ER Model</span></h1>
+      <div class="sub">資料倉儲實體關係圖 · 由 ETL 定義自動產生</div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="section-title">搜尋</div>
+    <input class="search" id="search" type="search" placeholder="表名、欄位、中文…" />
+
+    <div class="section-title">業務主流程</div>
+    <div class="flow">
+      <span class="flow-chip">銷售單</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">出貨單</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">應收單</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">收款單</span>
+    </div>
+    <div class="flow" style="margin-top:6px">
+      <span class="flow-chip">管報收入</span>
+      <span class="flow-arrow">·</span>
+      <span class="flow-chip">獎金</span>
+      <span class="flow-arrow">·</span>
+      <span class="flow-chip">基本維度</span>
+    </div>
+
+    <div class="section-title">資料域</div>
+    <div class="domain-list" id="domainFilters"></div>
+
+    <div class="section-title">資料層</div>
+    <div class="layer-list" id="layerFilters">
+      <label class="chk"><input type="checkbox" data-layer="dim" checked /><span class="dot" style="background:var(--dim)"></span>維度 dim_*</label>
+      <label class="chk"><input type="checkbox" data-layer="dwd" checked /><span class="dot" style="background:var(--dwd)"></span>明細 dwd_*</label>
+      <label class="chk"><input type="checkbox" data-layer="dws" checked /><span class="dot" style="background:var(--dws)"></span>彙總 dws_*</label>
+    </div>
+
+    <div class="section-title">關聯類型</div>
+    <label class="chk"><input type="checkbox" id="showFk" checked />外鍵關聯 (FK)</label>
+    <label class="chk"><input type="checkbox" id="showLineage" />ETL 依賴 (lineage)</label>
+
+    <div class="section-title">實體列表</div>
+    <div class="entity-mini" id="entityList"></div>
+  </aside>
+
+  <main class="canvas-wrap">
+    <div class="toolbar">
+      <button type="button" id="btnFit">適合畫面</button>
+      <button type="button" id="btnReset">重置佈局</button>
+      <button type="button" id="btnZoomIn">＋</button>
+      <button type="button" id="btnZoomOut">－</button>
+      <label><input type="checkbox" id="showCols" checked />顯示欄位</label>
+    </div>
+    <div class="legend">
+      <span><i class="lg-box" style="border-color:var(--dim);background:#dbeafe"></i>維度</span>
+      <span><i class="lg-box" style="border-color:var(--dwd);background:#ffedd5"></i>明細事實</span>
+      <span><i class="lg-box" style="border-color:var(--dws);background:#ede9fe"></i>彙總</span>
+      <span>拖曳空白處平移 · 滾輪縮放 · 點擊實體查看詳情</span>
+    </div>
+    <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+  </main>
+
+  <aside class="detail" id="detail">
+    <div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯</div>
+  </aside>
+</div>
+
+<script>
+const DATA = {"domains": {"基本維度": {"color": "#2563eb", "label": "基本維度"}, "銷售單": {"color": "#059669", "label": "銷售單"}, "出貨單": {"color": "#d97706", "label": "出貨單"}, "應收單": {"color": "#dc2626", "label": "應收單"}, "收款單": {"color": "#7c3aed", "label": "收款單"}, "財務單據": {"color": "#0891b2", "label": "財務單據"}, "管報收入": {"color": "#db2777", "label": "管報收入"}, "獎金": {"color": "#ca8a04", "label": "獎金"}}, "entities": [{"id": "dwd_deliv", "name": "dwd_deliv", "label": "出貨單", "full_name": "udp.dwd_deliv", "domain": "出貨單", "layer": "dwd", "columns": [{"name": "deliv_id", "comment": "出貨編號"}, {"name": "org_id", "comment": "組織編號"}, {"name": "doc_type", "comment": "單據性質"}, {"name": "charge_date", "comment": "扣帳日期"}, {"name": "deliv_type", "comment": "出貨性質"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "tc_code", "comment": "交易幣別"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "so_deliv_seq", "comment": "訂單項序"}, {"name": "so_lot_seq", "comment": "訂單分批項序"}, {"name": "item_id", "comment": "料件編號"}, {"name": "untax_price_tc", "comment": "未稅單價(原幣)"}, {"name": "shpd_untax_amt_tc", "comment": "出貨未稅合計(原幣)"}, {"name": "shpd_intax_amt_tc", "comment": "出貨含稅合計(原幣)"}, {"name": "review_date", "comment": "出貨文件審核日"}, {"name": "deliv_status", "comment": "狀態碼"}, {"name": "deliv_date", "comment": "出貨日期"}, {"name": "deliv_rcpt_dept_id", "comment": "簽收部門編號"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "er", "comment": "匯率"}, {"name": "deliv_seq", "comment": "出貨項次"}, {"name": "doc_type_name", "comment": "單據性質名稱"}, {"name": "deliv_type_name", "comment": "出貨性質名稱"}, {"name": "empl_id", "comment": "員工編號"}, {"name": "cust_id", "comment": "客戶編號"}, {"name": "deliv_cust_id", "comment": "收貨客戶編號"}, {"name": "shpd_untax_amt_ntd", "comment": "出貨未稅合計(NTD)"}, {"name": "shpd_intax_amt_ntd", "comment": "出貨含稅合計(NTD)"}, {"name": "std_price_amt_ntd", "comment": "標準定價合計(NTD)"}, {"name": "shpd_untax_amt_cny", "comment": "出貨未稅合計(CNY)"}, {"name": "shpd_intax_amt_cny", "comment": "出貨含稅合計(CNY)"}, {"name": "std_price_amt_cny", "comment": "標準定價合計(CNY)"}, {"name": "untax_price_fc", "comment": "未稅單價(本幣)"}, {"name": "shpd_untax_amt_fc", "comment": "出貨未稅合計(本幣)"}, {"name": "shpd_intax_amt_fc", "comment": "出貨含稅合計(本幣)"}, {"name": "std_price_fc", "comment": "標準定價(本幣)"}, {"name": "std_price_amt_fc", "comment": "標準定價合計(本幣)"}, {"name": "shpd_qty", "comment": "出貨數量"}, {"name": "svc_case_id", "comment": "顧問CRM服務紀錄單號"}, {"name": "orig_empl_id", "comment": "原業務人員"}, {"name": "orig_dept_id", "comment": "原部門編號"}, {"name": "maint_start_date", "comment": "維護起始日期"}, {"name": "maint_end_date", "comment": "維護截止日期"}, {"name": "lead_id", "comment": "潛客編號"}], "sources": ["1.dwd_deliv_tw.json", "2.dwd_deliv_cn.json"], "depends_on": ["dim_enum", "dim_er", "dim_org", "dwd_deliv_rcpt", "dwd_so"]}, {"id": "dwd_deliv_rcpt", "name": "dwd_deliv_rcpt", "label": "簽收單", "full_name": "udp.dwd_deliv_rcpt", "domain": "出貨單", "layer": "dwd", "columns": [{"name": "deliv_rcpt_id", "comment": "簽收單編號"}, {"name": "deliv_rcpt_seq", "comment": "簽收單序號"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "so_seq", "comment": "訂單序號"}, {"name": "so_deliv_seq", "comment": "訂單交期項序"}, {"name": "so_lot_seq", "comment": "訂單分批項序"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "deliv_rcpt_dept_id", "comment": "簽收部門編號"}, {"name": "deliv_id", "comment": "出貨單號"}, {"name": "deliv_rcpt_qty", "comment": "簽收數量"}], "sources": ["dwd_deliv_rcpt.json"], "depends_on": []}, {"id": "dwd_deliv_rtn", "name": "dwd_deliv_rtn", "label": "出退貨單", "full_name": "udp.dwd_deliv_rtn", "domain": "出貨單", "layer": "dwd", "columns": [{"name": "deliv_id", "comment": "出貨編號"}, {"name": "org_id", "comment": "組織編號"}, {"name": "doc_type", "comment": "單據性質"}, {"name": "charge_date", "comment": "扣帳日期"}, {"name": "deliv_type", "comment": "出貨性質"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "tc_code", "comment": "交易幣別"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "so_deliv_seq", "comment": "訂單項序"}, {"name": "so_lot_seq", "comment": "訂單分批項序"}, {"name": "item_id", "comment": "料件編號"}, {"name": "untax_price_tc", "comment": "未稅單價(原幣)"}, {"name": "shpd_untax_amt_tc", "comment": "出貨未稅合計(原幣)"}, {"name": "shpd_intax_amt_tc", "comment": "出貨含稅合計(原幣)"}, {"name": "review_date", "comment": "出貨文件審核日"}, {"name": "deliv_status", "comment": "狀態碼"}, {"name": "deliv_date", "comment": "出貨日期"}, {"name": "deliv_rcpt_dept_id", "comment": "簽收部門編號"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "er", "comment": "匯率"}, {"name": "deliv_seq", "comment": "出貨項次"}, {"name": "doc_type_name", "comment": "單據性質名稱"}, {"name": "deliv_type_name", "comment": "出貨性質名稱"}, {"name": "empl_id", "comment": "員工編號"}, {"name": "cust_id", "comment": "客戶編號"}, {"name": "deliv_cust_id", "comment": "收貨客戶編號"}, {"name": "shpd_untax_amt_ntd", "comment": "出貨未稅合計(NTD)"}, {"name": "shpd_intax_amt_ntd", "comment": "出貨含稅合計(NTD)"}, {"name": "std_price_amt_ntd", "comment": "標準定價合計(NTD)"}, {"name": "shpd_untax_amt_cny", "comment": "出貨未稅合計(CNY)"}, {"name": "shpd_intax_amt_cny", "comment": "出貨含稅合計(CNY)"}, {"name": "std_price_amt_cny", "comment": "標準定價合計(CNY)"}, {"name": "untax_price_fc", "comment": "未稅單價(本幣)"}, {"name": "shpd_untax_amt_fc", "comment": "出貨未稅合計(本幣)"}, {"name": "shpd_intax_amt_fc", "comment": "出貨含稅合計(本幣)"}, {"name": "std_price_fc", "comment": "標準定價(本幣)"}, {"name": "std_price_amt_fc", "comment": "標準定價合計(本幣)"}, {"name": "shpd_qty", "comment": "出貨數量"}, {"name": "svc_case_id", "comment": "顧問CRM服務紀錄單號"}, {"name": "orig_empl_id", "comment": "原業務人員"}, {"name": "orig_dept_id", "comment": "原部門編號"}, {"name": "maint_start_date", "comment": "維護起始日期"}, {"name": "maint_end_date", "comment": "維護截止日期"}, {"name": "lead_id", "comment": "潛客編號"}], "sources": ["5.dwd_deliv_rtn.json"], "depends_on": ["dwd_deliv", "dwd_rtn"]}, {"id": "dwd_rtn", "name": "dwd_rtn", "label": "銷退單", "full_name": "udp.dwd_rtn", "domain": "出貨單", "layer": "dwd", "columns": [{"name": "rtn_id", "comment": "退貨編號"}, {"name": "rtn_date", "comment": "退貨日期"}, {"name": "doc_type", "comment": "單據性質"}, {"name": "deliv_type", "comment": "出貨性質"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "tc_code", "comment": "交易幣別"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "so_deliv_seq", "comment": "訂單項序"}, {"name": "so_lot_seq", "comment": "訂單分批項序"}, {"name": "item_id", "comment": "料件編號"}, {"name": "untax_price_tc", "comment": "未稅單價(原幣)"}, {"name": "shpd_untax_amt_tc", "comment": "出貨未稅合計(原幣)"}, {"name": "shpd_intax_amt_tc", "comment": "出貨含稅合計(原幣)"}, {"name": "deliv_status", "comment": "狀態碼"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "er", "comment": "匯率"}, {"name": "rtn_seq", "comment": "退貨項次"}, {"name": "doc_type_name", "comment": "單據性質名稱"}, {"name": "deliv_type_name", "comment": "出貨性質名稱"}, {"name": "org_id", "comment": "組織編號"}, {"name": "empl_id", "comment": "員工編號"}, {"name": "cust_id", "comment": "客戶編號"}, {"name": "deliv_cust_id", "comment": "收貨客戶編號"}, {"name": "deliv_rcpt_dept_id", "comment": "簽收部門編號"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "shpd_untax_amt_ntd", "comment": "出貨未稅合計(NTD)"}, {"name": "shpd_intax_amt_ntd", "comment": "出貨含稅合計(NTD)"}, {"name": "std_price_amt_ntd", "comment": "標準定價合計(NTD)"}, {"name": "shpd_untax_amt_cny", "comment": "出貨未稅合計(CNY)"}, {"name": "shpd_intax_amt_cny", "comment": "出貨含稅合計(CNY)"}, {"name": "std_price_amt_cny", "comment": "標準定價合計(CNY)"}, {"name": "untax_price_fc", "comment": "未稅單價(本幣)"}, {"name": "shpd_untax_amt_fc", "comment": "出貨未稅合計(本幣)"}, {"name": "shpd_intax_amt_fc", "comment": "出貨含稅合計(本幣)"}, {"name": "std_price_fc", "comment": "標準定價(本幣)"}, {"name": "std_price_amt_fc", "comment": "標準定價合計(本幣)"}, {"name": "shpd_qty", "comment": "出貨數量"}, {"name": "svc_case_id", "comment": "顧問CRM服務紀錄單號"}, {"name": "orig_empl_id", "comment": "原業務人員"}, {"name": "orig_dept_id", "comment": "原部門編號"}, {"name": "maint_start_date", "comment": "維護起始日期"}, {"name": "maint_end_date", "comment": "維護截止日期"}, {"name": "lead_id", "comment": "潛客編號"}, {"name": "deliv_rtn_seq", "comment": "退貨項次"}], "sources": ["3.dwd_rtn_tw.json", "4.dwd_rtn_cn.json"], "depends_on": ["dim_enum", "dim_er", "dim_org", "dwd_deliv_rcpt", "dwd_so"]}, {"id": "dws_deliv", "name": "dws_deliv", "label": "出貨單彙總", "full_name": "udp.dws_deliv", "domain": "出貨單", "layer": "dws", "columns": [{"name": "shpd_untax_amt_tc", "comment": "出貨未稅合計(原幣)"}, {"name": "shpd_intax_amt_tc", "comment": "出貨含稅合計(原幣)"}, {"name": "shpd_untax_amt_fc", "comment": "出貨未稅合計(本幣)"}, {"name": "shpd_intax_amt_fc", "comment": "出貨含稅合計(本幣)"}, {"name": "shpd_qty", "comment": "出貨數量"}, {"name": "deliv_id", "comment": "出貨編號"}, {"name": "deliv_date", "comment": "出貨日期"}, {"name": "dept_id", "comment": "部門編號"}], "sources": ["dws_deliv.json"], "depends_on": ["dwd_deliv"]}, {"id": "dws_deliv_rcpt", "name": "dws_deliv_rcpt", "label": "簽收單彙總", "full_name": "udp.dws_deliv_rcpt", "domain": "出貨單", "layer": "dws", "columns": [{"name": "deliv_rcpt_qty", "comment": "簽收數量"}, {"name": "deliv_rcpt_id", "comment": "簽收單編號"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "deliv_rcpt_dept_id", "comment": "簽收部門編號"}, {"name": "deliv_id", "comment": "出貨單號"}], "sources": ["dws_deliv_rcpt.json"], "depends_on": ["dwd_deliv_rcpt"]}, {"id": "dim_cust", "name": "dim_cust", "label": "客戶", "full_name": "udp.dim_cust", "domain": "基本維度", "layer": "dim", "columns": [{"name": "cust_id", "comment": "客戶編號"}, {"name": "cust_fname", "comment": "客戶全稱"}, {"name": "cust_sname", "comment": "客戶簡稱"}, {"name": "cust_id_cn", "comment": "交易商代號(大陸)"}, {"name": "first_deliv_date", "comment": "取首次出貨日"}], "sources": ["dim_cust.json"], "depends_on": ["dim_trader"]}, {"id": "dim_cust_cnslt_pm", "name": "dim_cust_cnslt_pm", "label": "潛客顧問PM", "full_name": "udp.dim_cust_cnslt_pm", "domain": "基本維度", "layer": "dim", "columns": [{"name": "cust_id", "comment": "客戶編號"}, {"name": "cnslt_pm_dept_id", "comment": "顧問PM部門編號"}, {"name": "cnslt_pm_empl_id", "comment": "顧問PM員工編號"}], "sources": ["dim_cust_cnslt_pm.json"], "depends_on": []}, {"id": "dim_cust_mapng", "name": "dim_cust_mapng", "label": "兩岸客戶對照", "full_name": "udp.dim_cust_mapng", "domain": "基本維度", "layer": "dim", "columns": [{"name": "rn_cn", "comment": "針對台灣客戶代號依日期遞減排序"}, {"name": "cust_id_cn", "comment": "大陸最終客戶"}, {"name": "CREATE_DATE", "comment": "針對大陸客戶代號依日期遞減排序"}, {"name": "cust_id_tw", "comment": "台灣客戶編號"}], "sources": ["dim_cust_mapng.json"], "depends_on": []}, {"id": "dim_dept", "name": "dim_dept", "label": "部門", "full_name": "dim_dept", "domain": "基本維度", "layer": "dim", "columns": [{"name": "dept_id", "comment": "部門代號"}, {"name": "dept_name", "comment": "部門名稱"}, {"name": "supv_empl_id", "comment": "主管員工編號"}, {"name": "rpt_dept_name_rev", "comment": "報表部門名稱(收入別)"}, {"name": "rpt_dept_name", "comment": "報表部門名稱"}, {"name": "dept_l1_id", "comment": "一級部門編號"}, {"name": "dept_l1_name", "comment": "一級部門名稱"}, {"name": "dept_l2_id", "comment": "二級部門編號"}, {"name": "dept_l2_name", "comment": "二級部門名稱"}, {"name": "dept_l3_id", "comment": "三級部門編號"}, {"name": "dept_l3_name", "comment": "三級部門名稱"}, {"name": "dept_l4_id", "comment": "四級部門編號"}, {"name": "dept_l4_name", "comment": "四級部門名稱"}, {"name": "cust_type", "comment": "新老客屬性"}, {"name": "mgmt_reg", "comment": "分管區域"}, {"name": "dept_loc", "comment": "部門所在地"}, {"name": "mgmt_vp_empl_id", "comment": "分管VP員工編號"}, {"name": "is_active", "comment": "是否啟用"}], "sources": ["dim_dept.json"], "depends_on": []}, {"id": "dim_empl", "name": "dim_empl", "label": "員工", "full_name": "udp.dim_empl", "domain": "基本維度", "layer": "dim", "columns": [{"name": "empl_id", "comment": "員工編號"}, {"name": "empl_fname", "comment": "員工全名"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "org_id", "comment": "組織編號"}, {"name": "posn_code", "comment": "職位代碼"}, {"name": "supv_empl_id", "comment": "主管員工編號"}, {"name": "leave_date", "comment": "離職日"}, {"name": "is_empld", "comment": "在職與否"}], "sources": ["dim_empl.json"], "depends_on": []}, {"id": "dim_enum", "name": "dim_enum", "label": "列舉", "full_name": "udp.dim_enum", "domain": "基本維度", "layer": "dim", "columns": [{"name": "enum_type", "comment": "列舉類型"}, {"name": "emun_id", "comment": "列舉編號"}, {"name": "enum_name", "comment": "列舉名稱"}], "sources": ["dim_enum.json"], "depends_on": []}, {"id": "dim_er", "name": "dim_er", "label": "匯率", "full_name": "udp.dim_er", "domain": "基本維度", "layer": "dim", "columns": [{"name": "er_ref_id", "comment": "匯率參照表號"}, {"name": "tc_code", "comment": "交易幣別"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "year_month", "comment": "年月"}, {"name": "er", "comment": "匯率"}, {"name": "org", "comment": "只留下組織對應的本位幣"}], "sources": ["dim_er.json"], "depends_on": []}, {"id": "dim_item", "name": "dim_item", "label": "料件", "full_name": "udp.dim_item", "domain": "基本維度", "layer": "dim", "columns": [{"name": "item_id", "comment": "料件編號"}, {"name": "item_group_type", "comment": "料件群組類型"}, {"name": "item_categ", "comment": "產品線分類"}, {"name": "item_sub_categ", "comment": "產品線細項"}, {"name": "item_type", "comment": "料件類型"}, {"name": "item_name", "comment": "料件名稱"}, {"name": "item_spec", "comment": "料件規格"}, {"name": "item_group_name", "comment": "料件群組名稱"}, {"name": "item_sub_categ_name", "comment": "產品線細項名稱"}, {"name": "perf_prod_line_categ", "comment": "業績產品線分類"}, {"name": "is_bom", "comment": "是否為BOM品號"}, {"name": "supp_id", "comment": "供應商編號"}, {"name": "supp_fname", "comment": "供應商名稱"}], "sources": ["dim_item.json"], "depends_on": ["dwd_perf_prod_line"]}, {"id": "dim_item_categ", "name": "dim_item_categ", "label": "品類", "full_name": "udp.dim_item_categ", "domain": "基本維度", "layer": "dim", "columns": [{"name": "item_categ", "comment": "品類編號"}, {"name": "item_categ_name", "comment": "品類名稱"}], "sources": ["dim_item_categ.json"], "depends_on": []}, {"id": "dim_item_cost", "name": "dim_item_cost", "label": "料件成本", "full_name": "udp.dim_item_cost", "domain": "基本維度", "layer": "dim", "columns": [{"name": "org_id", "comment": "組織編號"}, {"name": "item_id", "comment": "品號"}, {"name": "year_month", "comment": "年月"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "ccy_code", "comment": "幣別"}, {"name": "cost", "comment": "成本"}, {"name": "cost_calc_time", "comment": "成本計算時間"}], "sources": ["dim_item_cost.json"], "depends_on": []}, {"id": "dim_job", "name": "dim_job", "label": "職務職級", "full_name": "udp.dim_job", "domain": "基本維度", "layer": "dim", "columns": [{"name": "job_id", "comment": "職務編號"}, {"name": "job_name", "comment": "職務名稱"}, {"name": "job_type", "comment": "職務類型"}], "sources": ["dim_job.json"], "depends_on": []}, {"id": "dim_lead", "name": "dim_lead", "label": "潛在客戶", "full_name": "udp.dim_lead", "domain": "基本維度", "layer": "dim", "columns": [{"name": "lead_id", "comment": "潛客編號"}, {"name": "lead_name", "comment": "潛客名稱"}, {"name": "lead_sname", "comment": "潛客簡稱"}, {"name": "lead_id_cn", "comment": "潛客編號(大陸)"}], "sources": ["dim_lead.json"], "depends_on": []}, {"id": "dim_org", "name": "dim_org", "label": "組織", "full_name": "udp.dim_org", "domain": "基本維度", "layer": "dim", "columns": [{"name": "org_id", "comment": "組織編號"}, {"name": "org_name", "comment": "組織名稱"}, {"name": "er_ref_id", "comment": "匯率參照表號"}, {"name": "fc_code", "comment": "本位幣別"}], "sources": ["dim_org.json"], "depends_on": []}, {"id": "dim_pmt_term", "name": "dim_pmt_term", "label": "付款條件", "full_name": "udp.dim_pmt_term", "domain": "基本維度", "layer": "dim", "columns": [{"name": "dc_flag", "comment": "收付標記,"}, {"name": "pmt_term_code", "comment": "付款條件代碼"}, {"name": "dc_flag_name", "comment": "收付標記名稱,"}, {"name": "pmt_term_name", "comment": "付款條件名稱"}], "sources": ["dim_pmt_term.json"], "depends_on": ["dim_enum"]}, {"id": "dim_prod_line", "name": "dim_prod_line", "label": "產品線", "full_name": "udp.dim_prod_line", "domain": "基本維度", "layer": "dim", "columns": [{"name": "item_categ", "comment": "產品線編號"}, {"name": "item_categ_name", "comment": "產品線名稱"}], "sources": ["dim_prod_line.json"], "depends_on": ["dim_item_categ    品類維度表"]}, {"id": "dim_sales_price", "name": "dim_sales_price", "label": "銷售價格表", "full_name": "udp.dim_sales_price", "domain": "基本維度", "layer": "dim", "columns": [{"name": "item_id", "comment": "品號"}, {"name": "ccy_code", "comment": "幣別"}, {"name": "floor_price", "comment": "銷售底價"}, {"name": "std_price", "comment": "標準定價"}, {"name": "std_pur_price", "comment": "標準進價"}], "sources": ["dim_sales_price.json"], "depends_on": []}, {"id": "dim_supp", "name": "dim_supp", "label": "供應商", "full_name": "udp.dim_supp", "domain": "基本維度", "layer": "dim", "columns": [{"name": "supp_id", "comment": "供應商編號"}, {"name": "supp_fname", "comment": "供應商全稱"}, {"name": "supp_sname", "comment": "供應商簡稱"}], "sources": ["dim_supp.json"], "depends_on": ["dim_trader"]}, {"id": "dim_trader", "name": "dim_trader", "label": "交易商", "full_name": "udp.dim_trader", "domain": "基本維度", "layer": "dim", "columns": [{"name": "trader_id", "comment": "交易商編號"}, {"name": "trader_fname", "comment": "交易商全稱"}, {"name": "trader_sname", "comment": "交易商簡稱"}, {"name": "trader_type", "comment": "交易商類型"}, {"name": "trader_id_cn", "comment": "交易商代號(大陸)"}], "sources": ["dim_trader.json"], "depends_on": []}, {"id": "dws_item_last_cost_by_ctrct", "name": "dws_item_last_cost_by_ctrct", "label": "料件合同最近成本", "full_name": "udp.dws_item_last_cost_by_ctrct", "domain": "基本維度", "layer": "dws", "columns": [{"name": "last_cost", "comment": "上次成本"}, {"name": "org_id", "comment": "組織編號"}, {"name": "item_id", "comment": "品號"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "ccy_code", "comment": "幣別"}, {"name": "cost", "comment": "成本"}], "sources": ["dws_item_late_cost_by_ctrct.json"], "depends_on": ["dim_item_cost"]}, {"id": "dwd_ar", "name": "dwd_ar", "label": "應收單", "full_name": "udp.dwd_ar", "domain": "應收單", "layer": "dwd", "columns": [{"name": "rcvd_amt_tc", "comment": "已收金額(原幣)"}, {"name": "rcvd_amt_fc", "comment": "已收金額(本幣)"}, {"name": "ar_id", "comment": "應收帳款單號碼"}, {"name": "ledger_id", "comment": "帳套"}, {"name": "ar_date", "comment": "帳款日期"}, {"name": "aging_date", "comment": "帳齡起算日"}, {"name": "ar_type", "comment": "帳款單性質"}, {"name": "cust_id", "comment": "帳款客戶編號"}, {"name": "ar_term_code", "comment": "收款條件編號"}, {"name": "untax_amt_tc_head", "comment": "立帳單頭未稅金額(原幣)"}, {"name": "tax_amt_tc_head", "comment": "立帳單頭稅額(原幣)"}, {"name": "ar_amt_tc_head", "comment": "立帳單頭應收金額(原幣)"}, {"name": "rsc_ref_id", "comment": "來源參考編號"}, {"name": "untax_amt_fc_head", "comment": "立帳單頭未稅金額(本幣)"}, {"name": "tax_amt_fc_head", "comment": "立帳單頭稅額(本幣)"}, {"name": "ar_amt_fc_head", "comment": "立帳單頭應收金額(本幣)"}, {"name": "src_doc_id", "comment": "來源業務單據號碼"}, {"name": "item_id", "comment": "產品編號"}, {"name": "intax_amt_tc", "comment": "含稅金額(原幣)"}, {"name": "untax_amt_fc", "comment": "未稅金額(本幣)"}, {"name": "tax_amt_fc", "comment": "稅額(本幣)"}, {"name": "intax_amt_fc", "comment": "含稅金額(本幣)"}, {"name": "lead_id", "comment": "潛在客戶編號"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "detail_amt_ratio", "comment": "佔比"}, {"name": "org_id", "comment": "帳務中心"}, {"name": "ar_seq", "comment": "項次"}, {"name": "ar_type_name", "comment": "帳款單名稱"}, {"name": "ar_cust_id", "comment": "收款客戶"}, {"name": "ar_term_name", "comment": "收款條件名稱"}, {"name": "inv_id", "comment": "發票號碼"}, {"name": "empl_id", "comment": "人員編號"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "orig_empl_id", "comment": "原業務員"}, {"name": "orig_dept_id", "comment": "原部門"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "first_deliv_rvw_date", "comment": "首次出貨審核日"}, {"name": "ar_pm_empl_id", "comment": "帳款PM"}, {"name": "ar_pm_dept_id", "comment": "帳款部門"}, {"name": "deliv_id", "comment": "出貨單號"}, {"name": "deliv_date", "comment": "出貨日期"}, {"name": "so_id", "comment": "訂單單號"}, {"name": "so_date", "comment": "成交日期"}, {"name": "acp_oid", "comment": "ACP訂單單號"}, {"name": "src_doc_seq", "comment": "來源業務單據項次"}, {"name": "tc_code", "comment": "交易原幣別"}, {"name": "er", "comment": "原幣匯率"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "untax_amt_ntd", "comment": "未稅金額(NTD)"}, {"name": "tax_amt_ntd", "comment": "稅額(NTD)"}, {"name": "intax_amt_ntd", "comment": "含稅金額(NTD)"}, {"name": "ar_amt_ntd", "comment": "應收金額(NTD)"}, {"name": "rcvd_amt_ntd", "comment": "已收金額(NTD)"}, {"name": "untax_amt_cny", "comment": "未稅金額(CNY)"}, {"name": "tax_amt_cny", "comment": "稅額(CNY)"}, {"name": "intax_amt_cny", "comment": "含稅金額(CNY)"}, {"name": "ar_amt_cny", "comment": "應收金額(CNY)"}, {"name": "rcvd_amt_cny", "comment": "已收金額(CNY)"}, {"name": "untax_amt_tc", "comment": "未稅金額(原幣)"}, {"name": "tax_amt_tc", "comment": "稅額(原幣)"}, {"name": "ar_amt_tc", "comment": "應收金額(原幣)"}, {"name": "ar_amt_fc", "comment": "應收金額(原幣)"}, {"name": "aging_days_today", "comment": "帳齡天數(截至系統日)"}, {"name": "aging_days_month_end", "comment": "帳齡天數(截至系統月份月底)"}, {"name": "ar_acct_code", "comment": "應收科目代碼"}, {"name": "ar_due_date", "comment": "應收日期"}], "sources": ["dwd_ar_cn.json", "dwd_ar_tw.json"], "depends_on": ["dim_enum", "dim_er", "dim_lead_cnslt_pm", "dim_org", "dim_pmt_term", "dwd_deliv", "dwd_deliv_rcpt", "dwd_so"]}, {"id": "dws_ar", "name": "dws_ar", "label": "應收單彙總", "full_name": "udp.dws_ar", "domain": "應收單", "layer": "dws", "columns": [{"name": "untax_amt_ntd", "comment": "未稅金額(NTD)"}, {"name": "tax_amt_ntd", "comment": "稅額(NTD)"}, {"name": "intax_amt_ntd", "comment": "含稅金額(NTD)"}, {"name": "ar_amt_ntd", "comment": "應收金額(NTD)"}, {"name": "rcvd_amt_ntd", "comment": "已收金額(NTD)"}, {"name": "untax_amt_cny", "comment": "未稅金額(CNY)"}, {"name": "tax_amt_cny", "comment": "稅額(CNY)"}, {"name": "intax_amt_cny", "comment": "含稅金額(CNY)"}, {"name": "ar_amt_cny", "comment": "應收金額(CNY)"}, {"name": "rcvd_amt_cny", "comment": "已收金額(CNY)"}, {"name": "untax_amt_tc", "comment": "未稅金額(原幣)"}, {"name": "tax_amt_tc", "comment": "稅額(原幣)"}, {"name": "intax_amt_tc", "comment": "含稅金額(原幣)"}, {"name": "ar_amt_tc", "comment": "應收金額(原幣)"}, {"name": "rcvd_amt_tc", "comment": "已收金額(原幣)"}, {"name": "untax_amt_fc", "comment": "未稅金額(本幣)"}, {"name": "tax_amt_fc", "comment": "稅額(本幣)"}, {"name": "intax_amt_fc", "comment": "含稅金額(本幣)"}, {"name": "ar_amt_fc", "comment": "應收金額(本幣)"}, {"name": "rcvd_amt_fc", "comment": "已收金額(本幣)"}, {"name": "org_id", "comment": "帳務中心"}, {"name": "ledger_id", "comment": "帳套"}, {"name": "ar_id", "comment": "應收帳款單號碼"}, {"name": "ar_type", "comment": "帳款單性質"}, {"name": "ar_type_name", "comment": "帳款單名稱"}, {"name": "ar_date", "comment": "帳款日期"}, {"name": "aging_date", "comment": "帳齡起算日"}, {"name": "cust_id", "comment": "帳款客戶編號"}, {"name": "lead_id", "comment": "潛在客戶編號"}, {"name": "ar_cust_id", "comment": "收款客戶"}, {"name": "ar_term_code", "comment": "收款條件編號"}, {"name": "ar_term_name", "comment": "收款條件名稱"}, {"name": "inv_id", "comment": "發票號碼"}, {"name": "empl_id", "comment": "人員編號"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "orig_empl_id", "comment": "原業務員"}, {"name": "orig_dept_id", "comment": "原部門"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "first_deliv_rvw_date", "comment": "首次出貨審核日"}, {"name": "ar_pm_empl_id", "comment": "帳款PM"}, {"name": "ar_pm_dept_id", "comment": "帳款部門"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_date", "comment": "簽收日期"}, {"name": "deliv_id", "comment": "出貨單號"}, {"name": "deliv_date", "comment": "出貨日期"}, {"name": "so_id", "comment": "訂單單號"}, {"name": "so_date", "comment": "成交日期"}, {"name": "acp_oid", "comment": "ACP訂單單號"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "tc_code", "comment": "交易原幣別"}, {"name": "er", "comment": "原幣匯率"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "aging_days_today", "comment": "帳齡天數(截至系統日)"}, {"name": "aging_days_month_end", "comment": "帳齡天數(截至系統月份月底)"}, {"name": "ar_acct_code", "comment": "應收科目代碼"}, {"name": "ar_due_date", "comment": "應收日期"}, {"name": "inv_date", "comment": "發票日期"}], "sources": ["dws_ar.json"], "depends_on": ["dwd_ar"]}, {"id": "dwd_ar_clear", "name": "dwd_ar_clear", "label": "沖帳單", "full_name": "udp.dwd_ar_clear", "domain": "收款單", "layer": "dwd", "columns": [{"name": "ar_clear_date", "comment": "沖帳日期"}, {"name": "ar_clear_type", "comment": "帳款單性質"}, {"name": "ar_clear_cust_id", "comment": "帳款核銷客戶"}, {"name": "clear_type", "comment": "沖銷類型"}, {"name": "ar_id", "comment": "沖銷帳款單單號"}, {"name": "ar_clear_amt_tc", "comment": "沖款金額(原幣)"}, {"name": "ar_clear_amt_fc", "comment": "沖款金額(本幣)"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "ledger_id", "comment": "帳套"}, {"name": "ar_clear_id", "comment": "沖帳單號"}, {"name": "ar_clear_seq", "comment": "項次"}, {"name": "org_id", "comment": "帳務中心"}, {"name": "ar_clear_type_name", "comment": "帳款單名稱"}, {"name": "aging_date", "comment": "帳齡起算日"}, {"name": "lead_id", "comment": "潛在客戶編號"}, {"name": "pmt_cust_id", "comment": "收款客戶"}, {"name": "clear_type_name", "comment": "沖銷類型名稱"}, {"name": "ar_seq", "comment": "沖銷帳款單項次"}, {"name": "ar_term_seq", "comment": "沖銷帳款單帳期"}, {"name": "empl_id", "comment": "人員編號"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "orig_empl_id", "comment": "原業務員"}, {"name": "orig_dept_id", "comment": "原部門"}, {"name": "tc_code", "comment": "交易原幣別"}, {"name": "er", "comment": "原幣匯率"}, {"name": "ar_clear_amt_ntd", "comment": "沖款金額(NTD)"}, {"name": "ar_clear_amt_cny", "comment": "沖款金額(CNY)"}, {"name": "aging_days_clear_date", "comment": "帳齡天數(沖帳日-帳款日)"}, {"name": "aging_days_clear_month_end", "comment": "帳齡天數(沖帳年月月底-帳款日)"}, {"name": "inv_id", "comment": "發票號碼"}, {"name": "ar_date", "comment": "帳款日期"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "so_id", "comment": "訂單單號"}, {"name": "so_date", "comment": "成交日期"}, {"name": "acp_oid", "comment": "ACP訂單單號"}], "sources": ["1.dwd_ar_clear_tw.json", "2.dwd_ar_clear_direct_tw.json", "3.dwd_ar_clear_cn.json", "4.dwd_ar_clear_direct_cn.json"], "depends_on": ["dim_enum", "dim_er", "dim_org", "dws_ar"]}, {"id": "dim_bonus_config", "name": "dim_bonus_config", "label": "獎金系統設定", "full_name": "udp.dim_bonus_config", "domain": "獎金", "layer": "dim", "columns": [{"name": "year_month", "comment": "年月"}, {"name": "min_profit_markup_rate", "comment": "最小利潤加成比率"}, {"name": "max_disc_rate", "comment": "最大折扣比率"}, {"name": "profit_share_rate", "comment": "利潤分成比率"}, {"name": "inhouse_sw_perf_rate", "comment": "自製軟體業績比率"}], "sources": ["dim_bonus_config.json"], "depends_on": []}, {"id": "dim_perf_prod_line", "name": "dim_perf_prod_line", "label": "業績產品線", "full_name": "udp.dim_perf_prod_line", "domain": "獎金", "layer": "dim", "columns": [{"name": "obj_type", "comment": "物件類型"}, {"name": "obj_id", "comment": "物件編號"}], "sources": ["dim_perf_prod_line.json"], "depends_on": []}, {"id": "dim_tag", "name": "dim_tag", "label": "標籤主檔", "full_name": "udp.dim_tag", "domain": "獎金", "layer": "dim", "columns": [{"name": "tag_id", "comment": "標籤編號"}, {"name": "tag_name", "comment": "標籤名稱"}, {"name": "tag_type", "comment": "標籤類別"}, {"name": "tag_desc", "comment": "標籤說明"}, {"name": "sys_type", "comment": "系統類型"}], "sources": ["dim_tag.json"], "depends_on": []}, {"id": "dwd_perf_categ_dept", "name": "dwd_perf_categ_dept", "label": "特殊部門業績類別", "full_name": "udp.dwd_perf_categ_dept", "domain": "獎金", "layer": "dwd", "columns": [{"name": "dept_l2_id", "comment": "二級部門編號"}, {"name": "item_id", "comment": "品號"}, {"name": "perf_categ", "comment": "業績類別"}], "sources": ["dwd_perf_categ_dept.json"], "depends_on": []}, {"id": "dwd_perf_deliv", "name": "dwd_perf_deliv", "label": "出貨業績", "full_name": "udp.dwd_perf_deliv", "domain": "獎金", "layer": "dwd", "columns": [{"name": "perf_floor_price", "comment": "KO100    業績底價                    N 18.4   月加權庫存成本 * 1.03"}, {"name": "first_deliv_date", "comment": "KO025    客戶首次出貨日              C  08"}, {"name": "days_from_first_deliv", "comment": "KO028    天數                        N  9.0"}, {"name": "perf_amt", "comment": "KO101    業績金額                    N 18.4"}, {"name": "new_cust_sales_alloc_rate", "comment": "KO103    新客業務分配百分比          N  6.4"}, {"name": "perf_year_month", "comment": "KO001    業績計算年月                C  06"}, {"name": "perf_rsc", "comment": "KO022    來源                        C  01    0.出貨  1.退貨  2.折讓  3.換貨   A.訂單未回  B.5,7類售價低於訂價八折扣業績"}, {"name": "rtn_id", "comment": "KO023    銷退核准單號                C  06    DSCSB_BOM.SB01\t\t--列出貨業績負項的時候再取dwd_rtn"}, {"name": "rtn_seq", "comment": "KO024    銷退核准單號序號            C  02    DSCSB_BOM.SB02\t\t--列出貨業績負項的時候再取dwd_rtn"}, {"name": "dept_perf_categ", "comment": "特殊部門業績分類"}, {"name": "new_cust_perf_wght", "comment": "KO049    新客認定權重                N  5.2"}, {"name": "old_cust_sales_alloc_rate", "comment": "KO104    老客業務分配百分比          N  6.4"}, {"name": "new_cust_sales_alloc_perf_amt", "comment": "KO105    新客業務分配原始業績金額    N 18.4"}, {"name": "old_cust_sales_alloc_perf_amt", "comment": "KO106    老客業務分配原始業績金額    N 18.4"}, {"name": "deliv_date", "comment": "KO002    出貨日期                    C  08    DSCSU_BOM.SU_SO02_MP002"}, {"name": "ctrct_id", "comment": "KO003    合約單號                    C  14    KP019+'-'+KP018"}, {"name": "so_id", "comment": "KO005    訂購單單號                  C  06    DSCSU_BOM.SU_SO03"}, {"name": "deliv_id", "comment": "KO006    出貨單單號                  C  06    DSCSU_BOM.SU01"}, {"name": "deliv_seq", "comment": "KO007    出貨單序號                  C  02    DSCSU_BOM.SU02"}, {"name": "so_deliv_seq", "comment": "KO008    BOM序號                     C  04    DSCSU_BOM.SU_IB002"}, {"name": "bom_item_id", "comment": "KO010    BOM品號                     C  20    DSCSU_BOM.SU06"}, {"name": "shpd_qty", "comment": "KO012    數量                        N  9.2   DSCSU_BOM.SU_IB004"}, {"name": "cust_sname", "comment": "KO014    客戶簡稱                    C  10    DSCSU_BOM.SU21"}, {"name": "item_group_type", "comment": "KO019    產品類別                    C  03    DSCSU_BOM.SU_IB008 1.自製軟體  2.服務產品  3.外購軟體  4.外購硬體"}, {"name": "item_categ", "comment": "KO020    產品代號                    C  06    DSCSU_BOM.SU_IB009 01, 02, 03, 04, 05, 06, 07, 08, 10, 11, 14, 16, 61"}, {"name": "empl_id", "comment": "KO031    出貨規劃師                  C  06"}, {"name": "dept_id", "comment": "KO032    出貨部門                    C  06"}, {"name": "perf_prod_line_categ", "comment": "業績產品線分類"}, {"name": "std_price_amt_fc", "comment": "KO096    訂價                        N 18.4   DSCSU.SU15"}, {"name": "shpd_untax_amt_ntd", "comment": "KO099    售價                        N 18.4   DSCSU.SU16"}], "sources": ["dwd_perf_deliv_.txt"], "depends_on": ["dim_cust", "dim_item", "dwd_deliv", "dws_item_last_cost_by_ctrct"]}, {"id": "dwd_tag_to_item", "name": "dwd_tag_to_item", "label": "料件打標明細", "full_name": "udp.dwd_tag_to_item", "domain": "獎金", "layer": "dwd", "columns": [{"name": "item_id", "comment": "品號"}, {"name": "item_name", "comment": "品名"}, {"name": "tag_name", "comment": "標籤名稱"}], "sources": ["dwd_tag_to_item.json"], "depends_on": ["dim_item", "dim_tag", "dwd_tag_to_obj"]}, {"id": "dwd_tag_to_obj", "name": "dwd_tag_to_obj", "label": "物件打標明細", "full_name": "udp.dwd_tag_to_obj", "domain": "獎金", "layer": "dwd", "columns": [{"name": "obj_id", "comment": "物件編號"}, {"name": "tag_id", "comment": "標籤編號"}, {"name": "sys_type", "comment": "系統類型"}, {"name": "obj_type", "comment": "物件類型"}], "sources": ["dwd_tag_to_obj.json"], "depends_on": []}, {"id": "dwd_ar_clear_rev", "name": "dwd_ar_clear_rev", "label": "沖帳收入", "full_name": "udp.dwd_ar_clear_rev", "domain": "管報收入", "layer": "dwd", "columns": [{"name": "ar_id", "comment": "財帳帳款單號"}, {"name": "ar_seq", "comment": "財帳帳款項次"}, {"name": "period", "comment": "月份"}, {"name": "data_type", "comment": "資料處理結果"}, {"name": "org_id", "comment": "營運據點"}, {"name": "org_name", "comment": "營運據點說明"}, {"name": "reg_id", "comment": "區域"}, {"name": "reg_name", "comment": "區域說明"}, {"name": "org_year", "comment": "組織年份"}, {"name": "year", "comment": "年度"}, {"name": "pl_ym", "comment": "損益年月"}, {"name": "ar_clear_type", "comment": "帳款單性質"}, {"name": "ar_clear_type_name", "comment": "帳款類型說明"}, {"name": "ar_clear_id", "comment": "財帳收款核銷單號"}, {"name": "ar_clear_seq", "comment": "收款核銷單項次"}, {"name": "ar_clear_date", "comment": "帳款日期"}, {"name": "ar_date", "comment": "立帳日期"}, {"name": "ar_empl_id", "comment": "帳款人員"}, {"name": "ar_dept_id", "comment": "帳款部門"}, {"name": "so_id", "comment": "訂單號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "deliv_id", "comment": "出貨單號"}, {"name": "deliv_seq", "comment": "出貨單項次"}, {"name": "deliv_date", "comment": "出貨單日期"}, {"name": "deliv_dept_id", "comment": "出貨部門"}, {"name": "deliv_empl_id", "comment": "出貨人員"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_seq", "comment": "簽收單項次"}, {"name": "ar_clear_dept_id", "comment": "沖帳部門"}, {"name": "ar_clear_dept_name", "comment": "部門說明"}, {"name": "ar_clear_empl_id", "comment": "沖帳人員"}, {"name": "ar_clear_empl_name", "comment": "人員說明"}, {"name": "cust_id", "comment": "客戶代號"}, {"name": "cust_name", "comment": "客戶說明"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "data_proc_type", "comment": "SM處理類型"}, {"name": "data_type_name", "comment": "資料類型說明"}, {"name": "rev_type_name", "comment": "資料類型"}, {"name": "item_id", "comment": "品號"}, {"name": "item_name", "comment": "品名"}, {"name": "prod_line_id", "comment": "產品線"}, {"name": "prod_line_name", "comment": "產品線說明"}, {"name": "prod_line_sub_id", "comment": "細項產品線"}, {"name": "item_group_type", "comment": "營收類別"}, {"name": "item_group_name", "comment": "營收類別說明"}, {"name": "svc_case_id", "comment": "CRM服務單號"}, {"name": "acct_code", "comment": "科目"}, {"name": "acct_code_name", "comment": "科目說明"}, {"name": "consol_acct_code", "comment": "合併科目"}, {"name": "consol_acct_code_name", "comment": "合併科目說明"}, {"name": "ar_clear_rev_untax_amt_ntd", "comment": "沖款收入未稅金額_NTD"}, {"name": "ar_clear_rev_intax_amt_ntd", "comment": "沖款收入含稅金額_NTD"}, {"name": "ar_clear_rev_untax_amt_cny", "comment": "沖款收入未稅金額_CNY"}, {"name": "ar_clear_rev_intax_amt_cny", "comment": "沖款收入含稅金額_CNY"}, {"name": "cost_untax_amt_ntd", "comment": "成本未稅金額_NTD"}, {"name": "cost_untax_amt_cny", "comment": "成本未稅金額_CNY"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "ar_clear_rev_untax_amt_fc", "comment": "沖款收入本幣稅前金額"}, {"name": "ar_clear_rev_intax_amt_fc", "comment": "沖款收入本幣含稅金額"}, {"name": "std_price_amt_fc", "comment": "本幣標準訂價"}, {"name": "deliv_cost_fc", "comment": "本幣出貨成本"}, {"name": "deliv_rev_fc", "comment": "本幣出貨收入"}, {"name": "shpd_qty", "comment": "出貨數量"}], "sources": ["dwd_ar_clear_rev.json"], "depends_on": []}, {"id": "dwd_deliv_rev", "name": "dwd_deliv_rev", "label": "出貨收入", "full_name": "udp.dwd_deliv_rev", "domain": "管報收入", "layer": "dwd", "columns": [{"name": "ar_id", "comment": "財帳帳款單"}, {"name": "ar_seq", "comment": "項次"}, {"name": "period", "comment": "期別"}, {"name": "data_type", "comment": "資料處理結果"}, {"name": "org_id", "comment": "營運據點"}, {"name": "org_name", "comment": "營運據點說明"}, {"name": "reg_id", "comment": "區域"}, {"name": "reg_name", "comment": "區域說明"}, {"name": "org_year", "comment": "組織年份"}, {"name": "year", "comment": "年度"}, {"name": "pl_ym", "comment": "損益年月"}, {"name": "ar_type", "comment": "帳款類型"}, {"name": "ar_type_name", "comment": "帳款類型說明"}, {"name": "ar_date", "comment": "帳款日期"}, {"name": "ar_empl_id", "comment": "帳款人員"}, {"name": "ar_dept_id", "comment": "帳款部門"}, {"name": "so_id", "comment": "訂單單號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "deliv_id", "comment": "出貨單號"}, {"name": "deliv_seq", "comment": "出貨單項次"}, {"name": "deliv_date", "comment": "出貨單日期"}, {"name": "deliv_empl_id", "comment": "出貨人員"}, {"name": "deliv_empl_name", "comment": "人員名稱"}, {"name": "deliv_rcpt_id", "comment": "簽收單號"}, {"name": "deliv_rcpt_seq", "comment": "簽收單項次"}, {"name": "rev_dept_id", "comment": "收入部門"}, {"name": "rev_dept_name", "comment": "部門說明"}, {"name": "cust_id", "comment": "客戶編號"}, {"name": "cust_name", "comment": "客戶名稱"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "data_proc_type", "comment": "SM處理類型"}, {"name": "data_type_name", "comment": "資料類型說明"}, {"name": "rev_type_name", "comment": "資料類型"}, {"name": "item_id", "comment": "料號"}, {"name": "item_name", "comment": "品名"}, {"name": "prod_line_id", "comment": "產品線"}, {"name": "prod_line_name", "comment": "產品線說明"}, {"name": "prod_line_sub_id", "comment": "細項產品線"}, {"name": "item_group_type", "comment": "營收類別"}, {"name": "item_group_name", "comment": "營收類別說明"}, {"name": "svc_case_id", "comment": "CRM服務單號"}, {"name": "acct_code", "comment": "科目"}, {"name": "acct_code_name", "comment": "科目說明"}, {"name": "consol_acct_code", "comment": "合併科目"}, {"name": "consol_acct_code_name", "comment": "合併科目說明"}, {"name": "ar_qty", "comment": "立帳數量"}, {"name": "deliv_rev_untax_amt_ntd", "comment": "出貨未稅金額_NTD"}, {"name": "deliv_rev_intax_amt_ntd", "comment": "出貨含稅金額_NTD"}, {"name": "deliv_rev_untax_amt_cny", "comment": "出貨未稅金額_CNY"}, {"name": "deliv_rev_intax_amt_cny", "comment": "出貨含稅金額_CNY"}, {"name": "cost_untax_amt_ntd", "comment": "成本未稅金額_NTD"}, {"name": "cost_untax_amt_cny", "comment": "成本未稅金額_CNY"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "intax_amt_fc", "comment": "本幣含稅金額"}, {"name": "untax_amt_fc", "comment": "本幣稅前金額"}, {"name": "std_price_amt_fc", "comment": "本幣標準訂價"}], "sources": ["dwd_deliv_rev.json"], "depends_on": []}, {"id": "dwd_inv", "name": "dwd_inv", "label": "發票", "full_name": "udp.dwd_inv", "domain": "財務單據", "layer": "dwd", "columns": [{"name": "inv_doc_id", "comment": "開票單號"}, {"name": "inv_type", "comment": "發票類型"}, {"name": "inv_id", "comment": "發票號碼"}, {"name": "inv_date", "comment": "發票日期"}, {"name": "untax_amt_tc", "comment": "未稅金額(原幣)"}, {"name": "tax_amt_tc", "comment": "稅額(原幣)"}, {"name": "intax_amt_tc", "comment": "含稅金額(原幣)"}], "sources": ["dwd_inv_cn.json", "dwd_inv_tw.json"], "depends_on": []}, {"id": "dwd_so", "name": "dwd_so", "label": "銷售訂單", "full_name": "udp.dwd_so", "domain": "銷售單", "layer": "dwd", "columns": [{"name": "so_id", "comment": "訂單單號"}, {"name": "so_date", "comment": "訂單日期"}, {"name": "so_type_orig", "comment": "原始訂單性質"}, {"name": "tax_rate", "comment": "稅率"}, {"name": "er", "comment": "匯率"}, {"name": "so_qty", "comment": "訂單數量"}, {"name": "shpd_qty", "comment": "已出貨數量"}, {"name": "rtn_exch_qty", "comment": "銷退換貨數量"}, {"name": "untax_price_tc", "comment": "訂單未稅單價(原幣)"}, {"name": "untax_amt_tc", "comment": "訂單未稅合計(原幣)"}, {"name": "intax_amt_tc", "comment": "訂單含稅合計(原幣)"}, {"name": "cxld_qty", "comment": "已簽退量"}, {"name": "std_price_tc", "comment": "標準定價(原幣)"}, {"name": "std_price_amt_tc", "comment": "標準定價合計(原幣)"}, {"name": "tt_oid", "comment": "TT單號"}, {"name": "so_status", "comment": "訂單狀態碼"}, {"name": "old_so_id", "comment": "舊訂單編號"}, {"name": "exch_so_id", "comment": "換約訂單"}, {"name": "so_type", "comment": "訂單性質"}, {"name": "fc_code", "comment": "本位幣別"}, {"name": "er_fc_to_ntd", "comment": "NTD匯率"}, {"name": "er_fc_to_cny", "comment": "CNY匯率"}, {"name": "untax_price_fc", "comment": "未稅單價(本幣)"}, {"name": "untax_amt_fc", "comment": "訂單未稅合計(本幣)"}, {"name": "intax_amt_fc", "comment": "訂單含稅合計(本幣)"}, {"name": "std_price_amt_fc", "comment": "標準定價合計(本幣)"}, {"name": "unship_qty", "comment": "未出貨數量"}, {"name": "vendor_oid", "comment": "第三方系統單號"}, {"name": "so_seq", "comment": "訂單項次"}, {"name": "so_deliv_seq", "comment": "訂單項序"}, {"name": "so_lot_seq", "comment": "訂單分批項序"}, {"name": "so_type_name", "comment": "訂單性質名稱"}, {"name": "org_id", "comment": "營運據點"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "empl_id", "comment": "業務人員"}, {"name": "orig_dept_id", "comment": "原部門編號"}, {"name": "orig_empl_id", "comment": "原業務人員"}, {"name": "cust_id", "comment": "客戶編號"}, {"name": "deliv_cust_id", "comment": "送貨客戶編號"}, {"name": "bom_item_id", "comment": "料件編號(展bom前)"}, {"name": "item_id", "comment": "料件編號"}, {"name": "ctrct_id", "comment": "合同號"}, {"name": "subsc_periods", "comment": "訂閱期數"}, {"name": "maint_start_date", "comment": "維護起始日期"}, {"name": "maint_end_date", "comment": "維護截止日期"}, {"name": "tc_code", "comment": "交易幣別"}, {"name": "untax_amt_ntd", "comment": "訂單未稅合計(NTD)"}, {"name": "intax_amt_ntd", "comment": "訂單含稅合計(NTD)"}, {"name": "unship_untax_amt_ntd", "comment": "未出貨訂單未稅合計(NTD)"}, {"name": "unship_intax_amt_ntd", "comment": "未出貨訂單含稅合計(NTD)"}, {"name": "std_price_amt_ntd", "comment": "標準定價合計(NTD)"}, {"name": "untax_amt_cny", "comment": "訂單未稅合計(CNY)"}, {"name": "intax_amt_cny", "comment": "訂單含稅合計(CNY)"}, {"name": "unship_untax_amt_cny", "comment": "未出貨訂單未稅合計(CNY)"}, {"name": "unship_intax_amt_cny", "comment": "未出貨訂單含稅合計(CNY)"}, {"name": "std_price_amt_cny", "comment": "標準定價合計(CNY)"}, {"name": "unship_untax_amt_fc", "comment": "未出貨訂單未稅合計(本幣)"}, {"name": "unship_intax_amt_fc", "comment": "未出貨訂單含稅合計(本幣)"}, {"name": "std_price_fc", "comment": "標準定價(本幣)"}, {"name": "rtnd_qty", "comment": "已銷退數量"}, {"name": "rcvd_qty", "comment": "已簽收數量"}, {"name": "is_close", "comment": "結案碼"}, {"name": "wf_form_id", "comment": "工作流表單代號"}, {"name": "lead_id", "comment": "潛客編號"}, {"name": "src_sys_type", "comment": "來源系統類型"}, {"name": "sales_type_1", "comment": "銷售分類一"}, {"name": "sales_type_2", "comment": "銷售分類二"}, {"name": "mkt_price", "comment": "市場價"}, {"name": "trans_term_type", "comment": "交易條件"}, {"name": "ar_cust_id", "comment": "帳款客戶"}, {"name": "prc_qty", "comment": "計價數量"}, {"name": "remark", "comment": "備註"}, {"name": "new_so_id", "comment": "新訂單單號"}, {"name": "deliv_rcpt_qty", "comment": "已簽收數量"}, {"name": "is_replaced", "comment": "換約與否"}, {"name": "da", "comment": "訂單單頭檔"}, {"name": "is_ctrd", "comment": "是否簽約"}, {"name": "std_price", "comment": "標準定價"}, {"name": "std_price_amt", "comment": "標準定價合計"}, {"name": "ref_price", "comment": "參考價格"}], "sources": ["1.dwd_so_tw.json", "2.dwd_so_exch_tw.json", "3.dwd_so_cn.json"], "depends_on": ["dwd_deliv_rcpt"]}, {"id": "dws_so", "name": "dws_so", "label": "訂單彙總", "full_name": "udp.dws_so", "domain": "銷售單", "layer": "dws", "columns": [{"name": "untax_amt_tc", "comment": "訂單未稅合計(原幣)"}, {"name": "intax_amt_tc", "comment": "訂單含稅合計(原幣)"}, {"name": "untax_amt_fc", "comment": "訂單未稅合計(本幣)"}, {"name": "intax_amt_fc", "comment": "訂單含稅合計(本幣)"}, {"name": "so_qty", "comment": "訂單數量"}, {"name": "so_id", "comment": "訂單編號"}, {"name": "so_date", "comment": "訂單日期"}, {"name": "dept_id", "comment": "部門編號"}, {"name": "vendor_oid", "comment": "第三方系統單號"}], "sources": ["dws_so.json"], "depends_on": ["dwd_so"]}], "relationships": [{"from": "dwd_so", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dwd_so", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_so", "fromCol": "org_id", "to": "dim_org", "toCol": "org_id", "label": "組織", "kind": "fk"}, {"from": "dwd_so", "fromCol": "dept_id", "to": "dim_dept", "toCol": "dept_id", "label": "部門", "kind": "fk"}, {"from": "dwd_so", "fromCol": "empl_id", "to": "dim_empl", "toCol": "empl_id", "label": "業務", "kind": "fk"}, {"from": "dwd_so", "fromCol": "bom_item_id", "to": "dim_item", "toCol": "item_id", "label": "BOM料件", "kind": "fk"}, {"from": "dws_so", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "彙總自", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "來源訂單", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "org_id", "to": "dim_org", "toCol": "org_id", "label": "組織", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "dept_id", "to": "dim_dept", "toCol": "dept_id", "label": "部門", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "empl_id", "to": "dim_empl", "toCol": "empl_id", "label": "業務", "kind": "fk"}, {"from": "dws_deliv", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "彙總自", "kind": "fk"}, {"from": "dwd_deliv_rcpt", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "出貨單", "kind": "fk"}, {"from": "dwd_deliv_rcpt", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "訂單", "kind": "fk"}, {"from": "dws_deliv_rcpt", "fromCol": "deliv_rcpt_id", "to": "dwd_deliv_rcpt", "toCol": "deliv_rcpt_id", "label": "彙總自", "kind": "fk"}, {"from": "dwd_rtn", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "訂單", "kind": "fk"}, {"from": "dwd_rtn", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "出貨單", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "org_id", "to": "dim_org", "toCol": "org_id", "label": "組織", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "訂單", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "出貨單", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "deliv_rcpt_id", "to": "dws_deliv_rcpt", "toCol": "deliv_rcpt_id", "label": "簽收單", "kind": "fk"}, {"from": "dwd_ar", "fromCol": "ar_term_code", "to": "dim_pmt_term", "toCol": "pmt_term_code", "label": "收款條件", "kind": "fk"}, {"from": "dws_ar", "fromCol": "ar_id", "to": "dwd_ar", "toCol": "ar_id", "label": "彙總自", "kind": "fk"}, {"from": "dwd_ar_clear", "fromCol": "ar_id", "to": "dwd_ar", "toCol": "ar_id", "label": "應收單", "kind": "fk"}, {"from": "dwd_ar_clear", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dwd_ar_clear_rev", "fromCol": "ar_id", "to": "dwd_ar", "toCol": "ar_id", "label": "應收單", "kind": "fk"}, {"from": "dwd_deliv_rev", "fromCol": "ar_id", "to": "dwd_ar", "toCol": "ar_id", "label": "應收單", "kind": "fk"}, {"from": "dwd_deliv_rev", "fromCol": "so_id", "to": "dwd_so", "toCol": "so_id", "label": "訂單", "kind": "fk"}, {"from": "dwd_deliv_rev", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "出貨單", "kind": "fk"}, {"from": "dwd_deliv_rev", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dwd_deliv_rev", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_inv", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dim_cust", "fromCol": "cust_id", "to": "dim_trader", "toCol": "trader_id", "label": "交易對象", "kind": "fk"}, {"from": "dim_item", "fromCol": "item_categ", "to": "dim_item_categ", "toCol": "item_categ", "label": "產品線", "kind": "fk"}, {"from": "dim_item", "fromCol": "supp_id", "to": "dim_supp", "toCol": "supp_id", "label": "供應商", "kind": "fk"}, {"from": "dim_item", "fromCol": "item_id", "to": "dim_sales_price", "toCol": "item_id", "label": "售價", "kind": "fk"}, {"from": "dim_item_cost", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dim_cust_cnslt_pm", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dim_cust_mapng", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dim_supp", "fromCol": "supp_id", "to": "dim_trader", "toCol": "trader_id", "label": "交易對象", "kind": "fk"}, {"from": "dwd_tag_to_item", "fromCol": "tag_id", "to": "dim_tag", "toCol": "tag_id", "label": "標籤", "kind": "fk"}, {"from": "dwd_tag_to_item", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_tag_to_obj", "fromCol": "tag_id", "to": "dim_tag", "toCol": "tag_id", "label": "標籤", "kind": "fk"}, {"from": "dwd_perf_categ_dept", "fromCol": "dept_id", "to": "dim_dept", "toCol": "dept_id", "label": "部門", "kind": "fk"}, {"from": "dwd_perf_deliv", "fromCol": "deliv_id", "to": "dwd_deliv", "toCol": "deliv_id", "label": "出貨單", "kind": "fk"}, {"from": "dwd_perf_deliv", "fromCol": "item_id", "to": "dim_item", "toCol": "item_id", "label": "料件", "kind": "fk"}, {"from": "dwd_perf_deliv", "fromCol": "cust_id", "to": "dim_cust", "toCol": "cust_id", "label": "客戶", "kind": "fk"}, {"from": "dim_perf_prod_line", "fromCol": "obj_id", "to": "dim_item", "toCol": "item_id", "label": "物件(料件)", "kind": "fk"}, {"from": "dwd_deliv", "fromCol": "", "to": "dwd_deliv_rcpt", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_deliv", "fromCol": "", "to": "dim_er", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_deliv", "fromCol": "", "to": "dim_enum", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_rtn", "fromCol": "", "to": "dim_org", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_rtn", "fromCol": "", "to": "dwd_deliv_rcpt", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_rtn", "fromCol": "", "to": "dim_er", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_rtn", "fromCol": "", "to": "dim_enum", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_deliv_rtn", "fromCol": "", "to": "dwd_deliv", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_deliv_rtn", "fromCol": "", "to": "dwd_rtn", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dim_pmt_term", "fromCol": "", "to": "dim_enum", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dws_item_last_cost_by_ctrct", "fromCol": "", "to": "dim_item_cost", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar", "fromCol": "", "to": "dwd_deliv_rcpt", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar", "fromCol": "", "to": "dim_er", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar", "fromCol": "", "to": "dim_enum", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar_clear", "fromCol": "", "to": "dws_ar", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar_clear", "fromCol": "", "to": "dim_er", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar_clear", "fromCol": "", "to": "dim_org", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_ar_clear", "fromCol": "", "to": "dim_enum", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_perf_deliv", "fromCol": "", "to": "dws_item_last_cost_by_ctrct", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_tag_to_item", "fromCol": "", "to": "dwd_tag_to_obj", "toCol": "", "label": "依賴", "kind": "lineage"}, {"from": "dwd_so", "fromCol": "", "to": "dwd_deliv_rcpt", "toCol": "", "label": "依賴", "kind": "lineage"}], "stats": {"entityCount": 40, "relCount": 73, "colCount": 712, "sourceCount": 49, "domainCount": 8}};
+
+const PK_HINTS = {
+  dim_cust: ["cust_id"], dim_item: ["item_id"], dim_org: ["org_id"],
+  dim_dept: ["dept_id"], dim_empl: ["empl_id"], dim_trader: ["trader_id"],
+  dim_supp: ["supp_id"], dim_lead: ["lead_id"], dim_enum: ["enum_type","enum_id"],
+  dim_er: ["er_ref_id","fc_code","tc_code","year_month"],
+  dim_tag: ["tag_id"], dim_pmt_term: ["pmt_term_code"],
+  dim_item_categ: ["item_categ"], dim_prod_line: ["item_categ"],
+  dim_job: ["job_id"], dim_sales_price: ["item_id","ccy_code"],
+  dim_item_cost: ["item_id","ctrct_id","year_month"],
+  dwd_so: ["so_id","so_seq","so_deliv_seq","so_lot_seq"],
+  dws_so: ["so_id"],
+  dwd_deliv: ["deliv_id","deliv_seq"],
+  dws_deliv: ["deliv_id"],
+  dwd_deliv_rcpt: ["deliv_rcpt_id"],
+  dws_deliv_rcpt: ["deliv_rcpt_id"],
+  dwd_rtn: ["deliv_id","deliv_seq"],
+  dwd_ar: ["ar_id","ar_seq","ledger_id"],
+  dws_ar: ["ar_id"],
+  dwd_ar_clear: ["clear_id"],
+  dwd_inv: ["inv_doc_id"],
+};
+
+const state = {
+  domains: new Set(Object.keys(DATA.domains)),
+  layers: new Set(["dim","dwd","dws","other"]),
+  showFk: true,
+  showLineage: false,
+  showCols: true,
+  search: "",
+  selected: null,
+  scale: 1,
+  panX: 40,
+  panY: 40,
+  positions: {},
+  draggingNode: null,
+  panning: false,
+  lastX: 0,
+  lastY: 0,
+};
+
+const svg = document.getElementById("stage");
+const NS = "http://www.w3.org/2000/svg";
+
+function el(tag, attrs={}, children=[]) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k === "textContent") n.textContent = v;
+    else n.setAttribute(k, v);
+  }
+  for (const c of children) n.appendChild(c);
+  return n;
+}
+
+function layerColor(layer) {
+  if (layer === "dim") return { stroke: "#2563eb", fill: "#eff6ff", head: "#dbeafe" };
+  if (layer === "dwd") return { stroke: "#c2410c", fill: "#fff7ed", head: "#ffedd5" };
+  if (layer === "dws") return { stroke: "#6d28d9", fill: "#f5f3ff", head: "#ede9fe" };
+  return { stroke: "#64748b", fill: "#f8fafc", head: "#e2e8f0" };
+}
+
+function domainColor(domain) {
+  return (DATA.domains[domain] && DATA.domains[domain].color) || "#64748b";
+}
+
+function visibleEntities() {
+  const q = state.search.trim().toLowerCase();
+  return DATA.entities.filter(e => {
+    if (!state.domains.has(e.domain)) return false;
+    if (!state.layers.has(e.layer) && e.layer !== "other") return false;
+    if (e.layer === "other" && !state.layers.has("other") && ![...state.layers].some(l => l === e.layer)) {
+      // allow other if any layer checked - treat other as always with dim
+    }
+    if (!q) return true;
+    if (e.name.toLowerCase().includes(q) || e.label.includes(q) || e.label.toLowerCase().includes(q)) return true;
+    return e.columns.some(c => c.name.toLowerCase().includes(q) || (c.comment||"").includes(q));
+  });
+}
+
+function visibleRels(ents) {
+  const ids = new Set(ents.map(e => e.id));
+  return DATA.relationships.filter(r => {
+    if (!ids.has(r.from) || !ids.has(r.to)) return false;
+    if (r.kind === "fk" && !state.showFk) return false;
+    if (r.kind === "lineage" && !state.showLineage) return false;
+    return true;
+  });
+}
+
+function measureBox(ent) {
+  const maxCols = state.showCols ? Math.min(ent.columns.length, 12) : 0;
+  const w = 220;
+  const h = 36 + maxCols * 18 + (ent.columns.length > 12 ? 18 : 0) + 8;
+  return { w, h, maxCols };
+}
+
+function layoutEntities(ents) {
+  const domainOrder = ["基本維度","銷售單","出貨單","應收單","收款單","財務單據","管報收入","獎金"];
+  const byDomain = {};
+  for (const e of ents) {
+    (byDomain[e.domain] ||= []).push(e);
+  }
+  for (const d of Object.keys(byDomain)) {
+    byDomain[d].sort((a,b) => {
+      const la = {dim:0,dwd:1,dws:2,other:3}[a.layer] ?? 4;
+      const lb = {dim:0,dwd:1,dws:2,other:3}[b.layer] ?? 4;
+      return la - lb || a.name.localeCompare(b.name);
+    });
+  }
+
+  const colW = 280;
+  const gapY = 24;
+  let col = 0;
+  for (const d of domainOrder) {
+    const list = byDomain[d];
+    if (!list || !list.length) continue;
+    let y = 20;
+    const x = 30 + col * colW;
+    for (const e of list) {
+      const { w, h } = measureBox(e);
+      if (!state.positions[e.id] || state.positions[e.id]._auto) {
+        state.positions[e.id] = { x, y, _auto: true };
+      }
+      y += h + gapY;
+    }
+    col++;
+  }
+  // leftover domains
+  for (const d of Object.keys(byDomain)) {
+    if (domainOrder.includes(d)) continue;
+    let y = 20;
+    const x = 30 + col * colW;
+    for (const e of byDomain[d]) {
+      const { h } = measureBox(e);
+      if (!state.positions[e.id] || state.positions[e.id]._auto) {
+        state.positions[e.id] = { x, y, _auto: true };
+      }
+      y += h + gapY;
+    }
+    col++;
+  }
+}
+
+function render() {
+  const ents = visibleEntities();
+  layoutEntities(ents);
+  const rels = visibleRels(ents);
+  const entMap = Object.fromEntries(ents.map(e => [e.id, e]));
+
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const gRoot = el("g", { id: "viewport", transform: `translate(${state.panX},${state.panY}) scale(${state.scale})` });
+  const gEdges = el("g", { id: "edges" });
+  const gNodes = el("g", { id: "nodes" });
+  gRoot.appendChild(gEdges);
+  gRoot.appendChild(gNodes);
+  svg.appendChild(gRoot);
+
+  // defs for arrow
+  const defs = el("defs", {}, [
+    el("marker", { id: "arrow", markerWidth: "8", markerHeight: "8", refX: "7", refY: "3", orient: "auto" }, [
+      el("path", { d: "M0,0 L7,3 L0,6 Z", fill: "#94a3b8" })
+    ]),
+    el("marker", { id: "arrowFk", markerWidth: "8", markerHeight: "8", refX: "7", refY: "3", orient: "auto" }, [
+      el("path", { d: "M0,0 L7,3 L0,6 Z", fill: "#0d7377" })
+    ]),
+  ]);
+  svg.insertBefore(defs, gRoot);
+
+  // edges
+  for (const r of rels) {
+    const a = state.positions[r.from];
+    const b = state.positions[r.to];
+    if (!a || !b) continue;
+    const ea = entMap[r.from], eb = entMap[r.to];
+    const ba = measureBox(ea), bb = measureBox(eb);
+    const x1 = a.x + ba.w / 2, y1 = a.y + ba.h / 2;
+    const x2 = b.x + bb.w / 2, y2 = b.y + bb.h / 2;
+    const isFk = r.kind === "fk";
+    const path = el("path", {
+      d: `M${x1},${y1} C${(x1+x2)/2},${y1} ${(x1+x2)/2},${y2} ${x2},${y2}`,
+      fill: "none",
+      stroke: isFk ? "#0d7377" : "#94a3b8",
+      "stroke-width": isFk ? "1.6" : "1.2",
+      "stroke-dasharray": isFk ? "none" : "5 4",
+      opacity: isFk ? "0.75" : "0.45",
+      "marker-end": isFk ? "url(#arrowFk)" : "url(#arrow)",
+      "pointer-events": "none",
+    });
+    gEdges.appendChild(path);
+  }
+
+  // nodes
+  for (const e of ents) {
+    const pos = state.positions[e.id];
+    const { w, h, maxCols } = measureBox(e);
+    const colors = layerColor(e.layer);
+    const selected = state.selected === e.id;
+    const g = el("g", {
+      class: "node",
+      transform: `translate(${pos.x},${pos.y})`,
+      "data-id": e.id,
+      style: "cursor:pointer",
+    });
+
+    g.appendChild(el("rect", {
+      width: w, height: h, rx: 8, ry: 8,
+      fill: colors.fill, stroke: selected ? "#0d7377" : colors.stroke,
+      "stroke-width": selected ? 2.5 : 1.5,
+      filter: selected ? "" : "",
+    }));
+    // accent bar
+    g.appendChild(el("rect", {
+      width: 5, height: h, rx: 2,
+      fill: domainColor(e.domain),
+    }));
+    // header
+    g.appendChild(el("rect", {
+      x: 5, width: w - 5, height: 34,
+      fill: colors.head,
+    }));
+    g.appendChild(el("text", {
+      x: 14, y: 15, "font-size": "11", "font-family": "IBM Plex Mono, monospace",
+      fill: colors.stroke, "font-weight": "600", textContent: e.name,
+    }));
+    g.appendChild(el("text", {
+      x: 14, y: 28, "font-size": "10", fill: "#5a6b7d", textContent: e.label,
+    }));
+
+    if (state.showCols && maxCols > 0) {
+      const pks = new Set(PK_HINTS[e.id] || []);
+      e.columns.slice(0, maxCols).forEach((c, i) => {
+        const isPk = pks.has(c.name);
+        const yy = 48 + i * 18;
+        g.appendChild(el("text", {
+          x: 14, y: yy,
+          "font-size": "10",
+          "font-family": "IBM Plex Mono, monospace",
+          fill: isPk ? "#b45309" : "#0d7377",
+          "font-weight": isPk ? "600" : "400",
+          textContent: (isPk ? "🔑 " : "") + c.name,
+        }));
+        const cmt = (c.comment || "").slice(0, 10);
+        if (cmt) {
+          g.appendChild(el("text", {
+            x: w - 10, y: yy, "font-size": "9", fill: "#94a3b8",
+            "text-anchor": "end", textContent: cmt,
+          }));
+        }
+      });
+      if (e.columns.length > maxCols) {
+        g.appendChild(el("text", {
+          x: 14, y: 48 + maxCols * 18,
+          "font-size": "9", fill: "#94a3b8",
+          textContent: `…另有 ${e.columns.length - maxCols} 欄`,
+        }));
+      }
+    }
+
+    g.addEventListener("mousedown", (ev) => {
+      ev.stopPropagation();
+      state.draggingNode = e.id;
+      state.lastX = ev.clientX;
+      state.lastY = ev.clientY;
+      selectEntity(e.id);
+    });
+    g.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectEntity(e.id);
+    });
+
+    gNodes.appendChild(g);
+  }
+
+  renderEntityList(ents);
+}
+
+function renderEntityList(ents) {
+  const box = document.getElementById("entityList");
+  box.innerHTML = ents.map(e => `
+    <button type="button" data-id="${e.id}" class="${state.selected===e.id?'active':''}">
+      <span>${e.label}</span>
+      <span class="ename">${e.name}</span>
+    </button>
+  `).join("");
+  box.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => selectEntity(btn.dataset.id));
+  });
+}
+
+function selectEntity(id) {
+  state.selected = id;
+  const e = DATA.entities.find(x => x.id === id);
+  const panel = document.getElementById("detail");
+  if (!e) {
+    panel.innerHTML = `<div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯</div>`;
+    render();
+    return;
+  }
+  const pks = new Set(PK_HINTS[e.id] || []);
+  const rels = DATA.relationships.filter(r => r.from === id || r.to === id);
+  const outR = rels.filter(r => r.from === id);
+  const inR = rels.filter(r => r.to === id);
+
+  panel.innerHTML = `
+    <h2>${e.label}</h2>
+    <div class="tid">${e.full_name || "udp." + e.name}</div>
+    <div class="badges">
+      <span class="badge">${e.domain}</span>
+      <span class="badge layer-${e.layer}">${e.layer}</span>
+      <span class="badge">${e.columns.length} 欄位</span>
+    </div>
+    <div class="meta-row">來源腳本：${(e.sources||[]).map(s => `<code>${s}</code>`).join(" ")}</div>
+    ${(e.depends_on||[]).length ? `<div class="meta-row">依賴表：${e.depends_on.map(d => `<code>${d}</code>`).join(" ")}</div>` : ""}
+
+    <div class="section-title">欄位</div>
+    <table class="col-table">
+      <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+      <tbody>
+        ${e.columns.map(c => `
+          <tr>
+            <td class="cname ${pks.has(c.name)?'pk':''}">${pks.has(c.name)?'🔑 ':''}${c.name}</td>
+            <td>${c.comment || "—"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+
+    <div class="section-title">連出關聯 (${outR.length})</div>
+    <ul class="rel-list">
+      ${outR.length ? outR.map(r => `
+        <li>${r.label || r.kind} → <a data-goto="${r.to}">${r.to}</a>
+          ${r.fromCol ? `<code>${r.fromCol}</code> → <code>${r.toCol}</code>` : ""}
+          <span style="opacity:.6">[${r.kind}]</span>
+        </li>`).join("") : "<li>無</li>"}
+    </ul>
+
+    <div class="section-title">連入關聯 (${inR.length})</div>
+    <ul class="rel-list">
+      ${inR.length ? inR.map(r => `
+        <li><a data-goto="${r.from}">${r.from}</a> → ${r.label || r.kind}
+          ${r.fromCol ? `<code>${r.fromCol}</code>` : ""}
+          <span style="opacity:.6">[${r.kind}]</span>
+        </li>`).join("") : "<li>無</li>"}
+    </ul>
+  `;
+  panel.querySelectorAll("[data-goto]").forEach(a => {
+    a.addEventListener("click", () => {
+      selectEntity(a.dataset.goto);
+      const p = state.positions[a.dataset.goto];
+      if (p) {
+        state.panX = window.innerWidth / 2 - (p.x + 110) * state.scale;
+        state.panY = 120 - p.y * state.scale;
+      }
+      render();
+    });
+  });
+  render();
+}
+
+function initFilters() {
+  const box = document.getElementById("domainFilters");
+  box.innerHTML = Object.entries(DATA.domains).map(([k,v]) => `
+    <label class="chk">
+      <input type="checkbox" data-domain="${k}" checked />
+      <span class="dot" style="background:${v.color}"></span>${v.label}
+    </label>
+  `).join("");
+  box.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("change", () => {
+      if (inp.checked) state.domains.add(inp.dataset.domain);
+      else state.domains.delete(inp.dataset.domain);
+      Object.keys(state.positions).forEach(k => { if (state.positions[k]._auto) delete state.positions[k]; });
+      render();
+    });
+  });
+  document.querySelectorAll("#layerFilters input").forEach(inp => {
+    inp.addEventListener("change", () => {
+      if (inp.checked) state.layers.add(inp.dataset.layer);
+      else state.layers.delete(inp.dataset.layer);
+      Object.keys(state.positions).forEach(k => { if (state.positions[k]._auto) delete state.positions[k]; });
+      render();
+    });
+  });
+  document.getElementById("showFk").addEventListener("change", e => { state.showFk = e.target.checked; render(); });
+  document.getElementById("showLineage").addEventListener("change", e => { state.showLineage = e.target.checked; render(); });
+  document.getElementById("showCols").addEventListener("change", e => {
+    state.showCols = e.target.checked;
+    Object.keys(state.positions).forEach(k => { if (state.positions[k]._auto) delete state.positions[k]; });
+    render();
+  });
+  document.getElementById("search").addEventListener("input", e => {
+    state.search = e.target.value;
+    render();
+  });
+
+  const s = DATA.stats;
+  document.getElementById("stats").innerHTML = `
+    <span>實體 <b>${s.entityCount}</b></span>
+    <span>關聯 <b>${s.relCount}</b></span>
+    <span>欄位 <b>${s.colCount}</b></span>
+    <span>ETL <b>${s.sourceCount}</b></span>
+    <span>資料域 <b>${s.domainCount}</b></span>
+  `;
+}
+
+function fitView() {
+  const ents = visibleEntities();
+  if (!ents.length) return;
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const e of ents) {
+    const p = state.positions[e.id];
+    const { w, h } = measureBox(e);
+    if (!p) continue;
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + w); maxY = Math.max(maxY, p.y + h);
+  }
+  const wrap = document.querySelector(".canvas-wrap");
+  const vw = wrap.clientWidth - 80, vh = wrap.clientHeight - 80;
+  const bw = maxX - minX + 40, bh = maxY - minY + 40;
+  state.scale = Math.min(1.2, Math.max(0.35, Math.min(vw / bw, vh / bh)));
+  state.panX = 40 - minX * state.scale + (vw - bw * state.scale) / 2;
+  state.panY = 50 - minY * state.scale;
+  render();
+}
+
+// pan / zoom / drag
+svg.addEventListener("mousedown", (ev) => {
+  if (ev.target === svg || ev.target.id === "viewport" || ev.target.id === "edges") {
+    state.panning = true;
+    state.lastX = ev.clientX;
+    state.lastY = ev.clientY;
+    svg.classList.add("dragging");
+  }
+});
+window.addEventListener("mousemove", (ev) => {
+  const dx = ev.clientX - state.lastX;
+  const dy = ev.clientY - state.lastY;
+  state.lastX = ev.clientX;
+  state.lastY = ev.clientY;
+  if (state.draggingNode) {
+    const p = state.positions[state.draggingNode];
+    p.x += dx / state.scale;
+    p.y += dy / state.scale;
+    p._auto = false;
+    render();
+  } else if (state.panning) {
+    state.panX += dx;
+    state.panY += dy;
+    const vp = document.getElementById("viewport");
+    if (vp) vp.setAttribute("transform", `translate(${state.panX},${state.panY}) scale(${state.scale})`);
+  }
+});
+window.addEventListener("mouseup", () => {
+  state.draggingNode = null;
+  state.panning = false;
+  svg.classList.remove("dragging");
+});
+svg.addEventListener("wheel", (ev) => {
+  ev.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+  const delta = ev.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(2.5, Math.max(0.25, state.scale * delta));
+  const wx = (mx - state.panX) / state.scale;
+  const wy = (my - state.panY) / state.scale;
+  state.scale = newScale;
+  state.panX = mx - wx * state.scale;
+  state.panY = my - wy * state.scale;
+  const vp = document.getElementById("viewport");
+  if (vp) vp.setAttribute("transform", `translate(${state.panX},${state.panY}) scale(${state.scale})`);
+}, { passive: false });
+
+document.getElementById("btnFit").addEventListener("click", fitView);
+document.getElementById("btnReset").addEventListener("click", () => {
+  state.positions = {};
+  state.scale = 1;
+  state.panX = 40;
+  state.panY = 40;
+  render();
+  setTimeout(fitView, 50);
+});
+document.getElementById("btnZoomIn").addEventListener("click", () => { state.scale = Math.min(2.5, state.scale * 1.15); render(); });
+document.getElementById("btnZoomOut").addEventListener("click", () => { state.scale = Math.max(0.25, state.scale / 1.15); render(); });
+
+initFilters();
+render();
+setTimeout(fitView, 80);
+</script>
+</body>
+</html>
