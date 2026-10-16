@@ -189,7 +189,7 @@ header {
 
   <aside class="sidebar">
     <div class="section-title">搜尋</div>
-    <input class="search" id="search" type="search" placeholder="表名、欄位、中文…" />
+    <input class="search" id="search" type="search" placeholder="搜尋實體（會一併顯示關聯表）…" />
 
     <div class="section-title">主流程</div>
     <div class="flow" id="flowMain"></div>
@@ -274,14 +274,12 @@ const state = {
   coreOnly: true,
   search: "",
   selected: null,
-  focusId: null,
   scale: 1,
   panX: 40,
   panY: 40,
   positions: {},
   draggingNode: null,
   panning: false,
-  panMoved: 0,
   lastX: 0,
   lastY: 0,
 };
@@ -310,39 +308,57 @@ function pkSet(id) {
   return new Set((model().pkHints && model().pkHints[id]) || []);
 }
 
-function relatedIds(focusId) {
-  const ids = new Set([focusId]);
+function relatedIds(entityId) {
+  const ids = new Set([entityId]);
   for (const r of model().relationships) {
-    if (r.from === focusId) ids.add(r.to);
-    if (r.to === focusId) ids.add(r.from);
+    if (r.from === entityId) ids.add(r.to);
+    if (r.to === entityId) ids.add(r.from);
   }
   return ids;
 }
 
+function entityMatchesSearch(e, q, raw) {
+  if (!q) return true;
+  if (e.name.toLowerCase().includes(q) || (e.label||"").toLowerCase().includes(q) || (e.label||"").includes(raw)) return true;
+  return (e.columns||[]).some(c => c.name.toLowerCase().includes(q) || (c.comment||"").includes(raw));
+}
+
 function visibleEntities() {
   const m = model();
-  const q = state.search.trim().toLowerCase();
+  const raw = state.search.trim();
+  const q = raw.toLowerCase();
   const core = m.coreIds ? new Set(m.coreIds) : null;
-  const focusNeighbors = state.focusId ? relatedIds(state.focusId) : null;
-  return m.entities.filter(e => {
-    if (focusNeighbors && !focusNeighbors.has(e.id)) return false;
-    if (!focusNeighbors) {
-      if (state.coreOnly && core && !core.has(e.id) && !e.isCore) return false;
-      if (!state.domains.has(e.domain)) return false;
-      if (!state.layers.has(e.layer) && e.layer !== "other") return false;
-    }
-    if (!q) return true;
-    if (e.name.toLowerCase().includes(q) || (e.label||"").toLowerCase().includes(q) || (e.label||"").includes(state.search.trim())) return true;
-    return (e.columns||[]).some(c => c.name.toLowerCase().includes(q) || (c.comment||"").includes(state.search.trim()));
+
+  // base pool by domain / layer / core filters
+  let pool = m.entities.filter(e => {
+    if (state.coreOnly && core && !core.has(e.id) && !e.isCore) return false;
+    if (!state.domains.has(e.domain)) return false;
+    if (!state.layers.has(e.layer) && e.layer !== "other") return false;
+    return true;
   });
+
+  if (!q) return pool;
+
+  // matched entities (search also looks outside core filter so related hits aren't missed)
+  const matched = m.entities.filter(e => entityMatchesSearch(e, q, raw));
+  if (!matched.length) return [];
+
+  // expand to neighbors via any relationship
+  const keep = new Set();
+  for (const e of matched) {
+    for (const id of relatedIds(e.id)) keep.add(id);
+  }
+  // when searching, show matched + related even if outside current domain/layer/core filters
+  return m.entities.filter(e => keep.has(e.id));
 }
 
 function visibleRels(ents) {
   const ids = new Set(ents.map(e => e.id));
-  const focusMode = !!state.focusId;
+  const searchMode = !!state.search.trim();
   return model().relationships.filter(r => {
     if (!ids.has(r.from) || !ids.has(r.to)) return false;
-    if (focusMode) return true;
+    // while searching, show all relationship kinds among the kept neighborhood
+    if (searchMode) return true;
     if (r.kind === "fk" && !state.showFk) return false;
     if (r.kind === "lineage" && !state.showLineage) return false;
     return true;
@@ -476,19 +492,8 @@ function renderEntityList(ents) {
   box.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => selectEntity(btn.dataset.id)));
 }
 
-function clearFocus() {
-  if (!state.focusId && !state.selected) return;
-  state.focusId = null;
-  state.selected = null;
-  document.getElementById("detail").innerHTML = `<div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯<br/><span style="font-size:.8rem;opacity:.8">點空白處可還原全部實體</span></div>`;
-  render();
-  setTimeout(fitView, 40);
-}
-
 function selectEntity(id) {
-  const focusChanged = state.focusId !== id;
   state.selected = id;
-  state.focusId = id;
   const e = model().entities.find(x => x.id === id);
   const panel = document.getElementById("detail");
   if (!e) {
@@ -500,6 +505,7 @@ function selectEntity(id) {
   const outR = rels.filter(r => r.from === id);
   const inR = rels.filter(r => r.to === id);
   const cols = e.columns || [];
+  const neighborCount = relatedIds(id).size - 1;
 
   panel.innerHTML = `
     <h2>${e.label||e.name}</h2>
@@ -511,9 +517,8 @@ function selectEntity(id) {
       ${e.isCore || (model().coreIds||[]).includes(e.id) ? '<span class="badge core">核心</span>' : ''}
       ${e.system === 'legacy' ? '<span class="badge">舊系統</span>' : ''}
       ${e.system === 'new' ? '<span class="badge">新系統</span>' : ''}
-      <span class="badge core">聚焦 · 關聯 ${relatedIds(id).size - 1} 張表</span>
+      <span class="badge">關聯 ${neighborCount} 張表</span>
     </div>
-    <div class="meta-row">已篩選與此表有關聯的實體 · 點畫布空白處還原全部</div>
     ${(e.sources||[]).length ? `<div class="meta-row">來源：${e.sources.map(s=>`<code>${s}</code>`).join(" ")}</div>` : ""}
     ${(e.depends_on||[]).length ? `<div class="meta-row">依賴：${e.depends_on.map(d=>`<code>${d}</code>`).join(" ")}</div>` : ""}
 
@@ -544,7 +549,6 @@ function selectEntity(id) {
     a.addEventListener("click", () => selectEntity(a.dataset.goto));
   });
   render();
-  if (focusChanged) setTimeout(fitView, 40);
 }
 
 function layersInModel() {
@@ -610,7 +614,7 @@ function rebuildSidebar() {
     const c = layerColor(l);
     const meta = LAYER_META[l] || { label: l };
     return `<span><i class="lg-box" style="border-color:${c.stroke};background:${c.head}"></i>${meta.label}</span>`;
-  }).join("") + `<span>點實體聚焦關聯 · 點空白還原 · 拖曳平移</span>`;
+  }).join("") + `<span>搜尋可帶出關聯表 · 清空還原 · 拖曳平移</span>`;
 }
 
 function clearAutoPos() {
@@ -621,12 +625,11 @@ function switchModel(id) {
   if (!MODELS[id] || state.modelId === id) return;
   state.modelId = id;
   state.selected = null;
-  state.focusId = null;
   state.positions = {};
   state.scale = 1; state.panX = 40; state.panY = 40;
   state.search = "";
   document.getElementById("search").value = "";
-  document.getElementById("detail").innerHTML = `<div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯<br/><span style="font-size:.8rem;opacity:.8">點空白處可還原全部實體</span></div>`;
+  document.getElementById("detail").innerHTML = `<div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯<br/><span style="font-size:.8rem;opacity:.8">搜尋框可篩出實體及其關聯表</span></div>`;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.model === id));
   rebuildSidebar();
   render();
@@ -658,10 +661,17 @@ document.getElementById("coreOnly").addEventListener("change", e => { state.core
 document.getElementById("showFk").addEventListener("change", e => { state.showFk = e.target.checked; render(); });
 document.getElementById("showLineage").addEventListener("change", e => { state.showLineage = e.target.checked; render(); });
 document.getElementById("showCols").addEventListener("change", e => { state.showCols = e.target.checked; clearAutoPos(); render(); });
-document.getElementById("search").addEventListener("input", e => { state.search = e.target.value; render(); });
+document.getElementById("search").addEventListener("input", e => {
+  state.search = e.target.value;
+  clearAutoPos();
+  render();
+  setTimeout(fitView, 40);
+});
 document.getElementById("btnFit").addEventListener("click", fitView);
 document.getElementById("btnReset").addEventListener("click", () => {
-  state.focusId = null; state.selected = null;
+  state.selected = null;
+  state.search = "";
+  document.getElementById("search").value = "";
   state.positions={}; state.scale=1; state.panX=40; state.panY=40;
   document.getElementById("detail").innerHTML = `<div class="detail-empty">點擊圖上的實體<br/>查看欄位與關聯</div>`;
   render(); setTimeout(fitView,40);
@@ -672,7 +682,6 @@ document.getElementById("btnZoomOut").addEventListener("click", () => { state.sc
 svg.addEventListener("mousedown", (ev) => {
   if (ev.target === svg || ev.target.id === "viewport" || ev.target.id === "edges" || ev.target.tagName === "path") {
     state.panning = true;
-    state.panMoved = 0;
     state.lastX = ev.clientX; state.lastY = ev.clientY;
     svg.classList.add("dragging");
   }
@@ -684,18 +693,15 @@ window.addEventListener("mousemove", (ev) => {
     const p = state.positions[state.draggingNode];
     p.x += dx/state.scale; p.y += dy/state.scale; p._auto = false; render();
   } else if (state.panning) {
-    state.panMoved += Math.abs(dx) + Math.abs(dy);
     state.panX += dx; state.panY += dy;
     const vp = document.getElementById("viewport");
     if (vp) vp.setAttribute("transform", `translate(${state.panX},${state.panY}) scale(${state.scale})`);
   }
 });
 window.addEventListener("mouseup", () => {
-  const wasBlankClick = state.panning && state.panMoved < 6;
   state.draggingNode = null;
   state.panning = false;
   svg.classList.remove("dragging");
-  if (wasBlankClick) clearFocus();
 });
 svg.addEventListener("wheel", (ev) => {
   ev.preventDefault();
