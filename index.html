@@ -372,6 +372,21 @@ function measureBox(ent) {
   return { w, h, maxCols: maxShow };
 }
 
+/** Anchor point on box border toward a target point (for arrow endpoints). */
+function boxEdgePoint(pos, box, towardX, towardY) {
+  const cx = pos.x + box.w / 2;
+  const cy = pos.y + box.h / 2;
+  const dx = towardX - cx;
+  const dy = towardY - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const hw = box.w / 2;
+  const hh = box.h / 2;
+  const sx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const sy = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const t = Math.min(sx, sy);
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
 function layoutEntities(ents) {
   const domainOrder = Object.keys(model().domains);
   const byDomain = {};
@@ -412,11 +427,17 @@ function render() {
   gRoot.appendChild(gEdges); gRoot.appendChild(gNodes); svg.appendChild(gRoot);
 
   svg.insertBefore(el("defs", {}, [
-    el("marker", { id: "arrow", markerWidth: "8", markerHeight: "8", refX: "7", refY: "3", orient: "auto" }, [
-      el("path", { d: "M0,0 L7,3 L0,6 Z", fill: "#94a3b8" })
+    el("marker", {
+      id: "arrowFlow", viewBox: "0 0 12 12", refX: "11", refY: "6",
+      markerWidth: "10", markerHeight: "10", orient: "auto", markerUnits: "userSpaceOnUse",
+    }, [
+      el("path", { d: "M0,1 L11,6 L0,11 Z", fill: "#0d7377" })
     ]),
-    el("marker", { id: "arrowFk", markerWidth: "8", markerHeight: "8", refX: "7", refY: "3", orient: "auto" }, [
-      el("path", { d: "M0,0 L7,3 L0,6 Z", fill: "#0d7377" })
+    el("marker", {
+      id: "arrowFlowDim", viewBox: "0 0 12 12", refX: "11", refY: "6",
+      markerWidth: "9", markerHeight: "9", orient: "auto", markerUnits: "userSpaceOnUse",
+    }, [
+      el("path", { d: "M0,1 L11,6 L0,11 Z", fill: "#64748b" })
     ]),
   ]), gRoot);
 
@@ -424,19 +445,37 @@ function render() {
     const a = state.positions[r.from], b = state.positions[r.to];
     if (!a || !b) continue;
     const ea = entMap[r.from], eb = entMap[r.to];
+    if (!ea || !eb) continue;
     const ba = measureBox(ea), bb = measureBox(eb);
-    const x1 = a.x + ba.w/2, y1 = a.y + ba.h/2;
-    const x2 = b.x + bb.w/2, y2 = b.y + bb.h/2;
+    // from → to = data flow direction (arrow at destination)
+    const cx1 = a.x + ba.w / 2, cy1 = a.y + ba.h / 2;
+    const cx2 = b.x + bb.w / 2, cy2 = b.y + bb.h / 2;
+    const p1 = boxEdgePoint(a, ba, cx2, cy2);
+    const p2 = boxEdgePoint(b, bb, cx1, cy1);
+    const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+    const mx = (x1 + x2) / 2;
     const isFk = r.kind === "fk";
+    const stroke = isFk ? "#0d7377" : "#64748b";
     gEdges.appendChild(el("path", {
-      d: `M${x1},${y1} C${(x1+x2)/2},${y1} ${(x1+x2)/2},${y2} ${x2},${y2}`,
-      fill: "none", stroke: isFk ? "#0d7377" : "#94a3b8",
-      "stroke-width": isFk ? "1.6" : "1.2",
-      "stroke-dasharray": isFk ? "none" : "5 4",
-      opacity: isFk ? "0.75" : "0.45",
-      "marker-end": isFk ? "url(#arrowFk)" : "url(#arrow)",
+      d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+      fill: "none", stroke,
+      "stroke-width": isFk ? "2" : "1.6",
+      "stroke-dasharray": isFk ? "none" : "6 4",
+      opacity: isFk ? "0.9" : "0.7",
+      "marker-end": isFk ? "url(#arrowFlow)" : "url(#arrowFlowDim)",
       "pointer-events": "none",
     }));
+    // small flow label near midpoint when present
+    if (r.label) {
+      const midY = (y1 + y2) / 2;
+      const label = (r.label || "").slice(0, 8);
+      gEdges.appendChild(el("text", {
+        x: mx, y: midY - 4,
+        "font-size": "9", fill: stroke, opacity: "0.85",
+        "text-anchor": "middle", "pointer-events": "none",
+        textContent: "→ " + label,
+      }));
+    }
   }
 
   for (const e of ents) {
@@ -614,7 +653,7 @@ function rebuildSidebar() {
     const c = layerColor(l);
     const meta = LAYER_META[l] || { label: l };
     return `<span><i class="lg-box" style="border-color:${c.stroke};background:${c.head}"></i>${meta.label}</span>`;
-  }).join("") + `<span>搜尋可帶出關聯表 · 清空還原 · 拖曳平移</span>`;
+  }).join("") + `<span>→ 箭頭＝資料流向 · 搜尋可帶出關聯表 · 拖曳平移</span>`;
 }
 
 function clearAutoPos() {
